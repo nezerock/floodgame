@@ -1,0 +1,32 @@
+# Токен и настройки
+.env
+.env.local
+.env.*.local
+
+# База данных
+*.db
+*.sqlite
+*.sqlite3
+casino.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+ENV/
+dist/
+build/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Логи
+*.log
