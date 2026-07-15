@@ -1,16 +1,17 @@
 import os
 from dotenv import load_dotenv
 
-# Загружаем переменные из .env
+# Загружаем переменные из .env (для локального запуска)
 load_dotenv()
 
-# Токен бота из .env
+# Токен бота - сначала из переменных, потом из .env
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 if not BOT_TOKEN:
     raise ValueError(
         "❌ BOT_TOKEN не найден!\n"
-        "Создайте файл .env и добавьте: BOT_TOKEN=ваш_токен"
+        "Для локального запуска: создайте файл .env\n"
+        "Для Railway: добавьте переменную BOT_TOKEN в Dashboard"
     )
 
 # Настройки игры
