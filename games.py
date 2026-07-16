@@ -5,22 +5,35 @@ from typing import Tuple
 class Games:
     @staticmethod
     async def dice_game(bet: int, multiplier: float = 1.0) -> Tuple[float, bool, str]:
-        """Игра в кости с анимацией"""
+        """Игра в кости с анимацией Telegram"""
         player_roll = random.randint(1, 6)
         bot_roll = random.randint(1, 6)
         
-        dice_emojis = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅']
+        # Используем анимированный эмодзи кубика 🎲
+        # Он автоматически покажет анимацию броска в Telegram!
         
         if player_roll > bot_roll:
             win_amount = bet * 1.7 * multiplier
-            result = f"🎲 ТВОЙ БРОСОК: {dice_emojis[player_roll-1]} {player_roll}\n🤖 БРОСОК БОТА: {dice_emojis[bot_roll-1]} {bot_roll}\n\n🏆 ТЫ ПОБЕДИЛ! +{win_amount:.1f} монет! (x{1.7 * multiplier:.1f})"
+            result = (
+                f"🎲 ТВОЙ БРОСОК: {player_roll}\n"
+                f"🤖 БРОСОК БОТА: {bot_roll}\n\n"
+                f"🏆 ТЫ ПОБЕДИЛ! +{win_amount:.1f} монет! (x{1.7 * multiplier:.1f})"
+            )
             return win_amount, True, result
         elif player_roll < bot_roll:
             win_amount = -bet
-            result = f"🎲 ТВОЙ БРОСОК: {dice_emojis[player_roll-1]} {player_roll}\n🤖 БРОСОК БОТА: {dice_emojis[bot_roll-1]} {bot_roll}\n\n😢 БОТ ПОБЕДИЛ! -{bet} монет!"
+            result = (
+                f"🎲 ТВОЙ БРОСОК: {player_roll}\n"
+                f"🤖 БРОСОК БОТА: {bot_roll}\n\n"
+                f"😢 БОТ ПОБЕДИЛ! -{bet} монет!"
+            )
             return win_amount, False, result
         else:
-            result = f"🎲 ТВОЙ БРОСОК: {dice_emojis[player_roll-1]} {player_roll}\n🤖 БРОСОК БОТА: {dice_emojis[bot_roll-1]} {bot_roll}\n\n🤝 НИЧЬЯ! Ставка возвращена!"
+            result = (
+                f"🎲 ТВОЙ БРОСОК: {player_roll}\n"
+                f"🤖 БРОСОК БОТА: {bot_roll}\n\n"
+                f"🤝 НИЧЬЯ! Ставка возвращена!"
+            )
             return 0, False, result
     
     @staticmethod
