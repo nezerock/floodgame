@@ -4,15 +4,15 @@ from dotenv import load_dotenv
 # Загружаем переменные из .env (для локального запуска)
 load_dotenv()
 
-# Токен бота - сначала из переменных, потом из .env
+# Токен бота - сначала из переменных окружения, потом из .env
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+# Проверка токена
 if not BOT_TOKEN:
-    raise ValueError(
-        "❌ BOT_TOKEN не найден!\n"
-        "Для локального запуска: создайте файл .env\n"
-        "Для Railway: добавьте переменную BOT_TOKEN в Dashboard"
-    )
+    print("❌ BOT_TOKEN не найден!")
+    print("Для локального запуска: создайте файл .env с BOT_TOKEN")
+    print("Для Railway: добавьте переменную BOT_TOKEN в Dashboard")
+    exit(1)
 
 # Настройки игры
 DAILY_BONUS = 100
