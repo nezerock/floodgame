@@ -11,14 +11,16 @@ async def init_db():
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
                 first_name TEXT,
-                balance INTEGER DEFAULT 50,
+                balance REAL DEFAULT 50,
                 total_wins INTEGER DEFAULT 0,
                 total_losses INTEGER DEFAULT 0,
                 last_daily_bonus TEXT,
                 games_played INTEGER DEFAULT 0,
                 created_at TEXT,
                 clicks_today INTEGER DEFAULT 0,
-                last_click_time TEXT
+                last_click_time TEXT,
+                boost_multiplier REAL DEFAULT 1.0,
+                boost_expiry TEXT
             )
         ''')
         
@@ -56,7 +58,7 @@ class Database:
             await db.commit()
     
     @staticmethod
-    async def update_balance(user_id: int, amount: int):
+    async def update_balance(user_id: int, amount: float):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 UPDATE users 
@@ -66,7 +68,7 @@ class Database:
             await db.commit()
     
     @staticmethod
-    async def get_balance(user_id: int) -> int:
+    async def get_balance(user_id: int) -> float:
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
                 'SELECT balance FROM users WHERE user_id = ?', (user_id,)
@@ -117,7 +119,7 @@ class Database:
             await db.commit()
     
     @staticmethod
-    async def add_game_history(user_id: int, game_type: str, bet: int, win: int, result: str):
+    async def add_game_history(user_id: int, game_type: str, bet: int, win: float, result: str):
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 INSERT INTO game_history 
@@ -165,4 +167,32 @@ class Database:
                     last_click_time = ?
                 WHERE user_id = ?
             ''', (CLICK_REWARD, today, user_id))
+            await db.commit()
+    
+    @staticmethod
+    async def get_boost(user_id: int):
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                'SELECT boost_multiplier, boost_expiry FROM users WHERE user_id = ?', (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return 1.0, None
+                multiplier, expiry = row
+                if expiry:
+                    expiry_time = datetime.fromisoformat(expiry)
+                    if datetime.now() > expiry_time:
+                        return 1.0, None
+                return multiplier or 1.0, expiry
+    
+    @staticmethod
+    async def set_boost(user_id: int, multiplier: float, hours: int):
+        async with aiosqlite.connect(DB_PATH) as db:
+            expiry = datetime.now() + timedelta(hours=hours)
+            await db.execute('''
+                UPDATE users 
+                SET boost_multiplier = ?,
+                    boost_expiry = ?
+                WHERE user_id = ?
+            ''', (multiplier, expiry.isoformat(), user_id))
             await db.commit()
