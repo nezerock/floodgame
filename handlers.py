@@ -2,11 +2,14 @@ from aiogram import types
 from aiogram.dispatcher import Dispatcher
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher.filters import Text
+from datetime import datetime
 
 from database import Database
 from games import Games
 from config import EMOJI, DAILY_BONUS, MIN_BET, MAX_BET, CLICK_COOLDOWN, MAX_CLICKS_PER_DAY, CLICK_REWARD, SHOP_ITEMS
 import time
+import random
+import asyncio
 
 user_cooldowns = {}
 user_sessions = {}  # user_id -> active session
@@ -355,11 +358,9 @@ def register_handlers(dp: Dispatcher):
         try:
             hours = int(message.text.strip())
             if 1 <= hours <= 24:
-                # Проверяем, что пользователь в магазине
                 if user_id not in user_sessions:
                     return
                 
-                # Ждём выбор бонуса через callback
                 await message.answer(
                     f"⏱ Выбрано {hours} час(ов). Теперь выбери бонус в магазине!\n"
                     f"💡 Цена: бонус × {hours}",
@@ -373,12 +374,9 @@ def register_handlers(dp: Dispatcher):
         try:
             bet = int(message.text.strip())
             if MIN_BET <= bet <= MAX_BET:
-                # Проверяем, что пользователь в игре
                 if user_id not in user_sessions:
                     return
                 
-                # Ищем последнюю игру
-                # Для упрощения - запускаем игру в кости
                 await play_game_direct(message, bet)
                 return
         except:
@@ -395,7 +393,7 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         
         # Отправляем анимацию начала игры
-        await message.answer("🎲 НАЧИНАЕМ ИГРУ!\nБросаем кубики...")
+        await message.answer("🎲 НАЧИНАЕМ ИГРУ! Бросаем кубики...")
         
         # Имитация анимации бросков
         await asyncio.sleep(0.5)
@@ -405,10 +403,10 @@ def register_handlers(dp: Dispatcher):
         bot_roll = random.randint(1, 6)
         player_roll = random.randint(1, 6)
         
-        await message.answer(f"🤖 БРОСОК БОТА:\n{dice_emojis[bot_roll-1]} {bot_roll}")
+        await message.answer(f"🤖 БРОСОК БОТА: {dice_emojis[bot_roll-1]} {bot_roll}")
         await asyncio.sleep(0.5)
         
-        await message.answer(f"🎲 ТВОЙ БРОСОК:\n{dice_emojis[player_roll-1]} {player_roll}")
+        await message.answer(f"🎲 ТВОЙ БРОСОК: {dice_emojis[player_roll-1]} {player_roll}")
         await asyncio.sleep(0.5)
         
         # Результат
@@ -488,7 +486,7 @@ def register_handlers(dp: Dispatcher):
         
         if game == 'dice':
             # Анимация для костей
-            await callback.message.edit_text("🎲 НАЧИНАЕМ ИГРУ!\nБросаем кубики...")
+            await callback.message.edit_text("🎲 НАЧИНАЕМ ИГРУ! Бросаем кубики...")
             
             # Имитация бросков
             await asyncio.sleep(0.5)
@@ -498,4 +496,144 @@ def register_handlers(dp: Dispatcher):
             bot_roll = random.randint(1, 6)
             player_roll = random.randint(1, 6)
             
-            await callback.message.answer(f"🤖 БРОСОК БОТА:\
+            await callback.message.answer(f"🤖 БРОСОК БОТА: {dice_emojis[bot_roll-1]} {bot_roll}")
+            await asyncio.sleep(0.3)
+            await callback.message.answer(f"🎲 ТВОЙ БРОСОК: {dice_emojis[player_roll-1]} {player_roll}")
+            await asyncio.sleep(0.3)
+            
+            if player_roll > bot_roll:
+                win_amount = bet * 1.7 * boost
+                await Database.update_balance(user_id, win_amount)
+                await Database.update_stats(user_id, True)
+                await Database.add_game_history(user_id, game, bet, win_amount, 'win')
+                balance = await Database.get_balance(user_id)
+                await callback.message.answer(
+                    f"🏆 ТЫ ПОБЕДИЛ!\n"
+                    f"💰 +{win_amount:.1f} монет! (x{1.7 * boost:.1f})\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            elif player_roll < bot_roll:
+                win_amount = -bet
+                await Database.update_balance(user_id, win_amount)
+                await Database.update_stats(user_id, False)
+                await Database.add_game_history(user_id, game, bet, win_amount, 'loss')
+                balance = await Database.get_balance(user_id)
+                await callback.message.answer(
+                    f"😢 БОТ ПОБЕДИЛ!\n"
+                    f"💸 -{bet} монет!\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            else:
+                await Database.add_game_history(user_id, game, bet, 0, 'draw')
+                balance = await Database.get_balance(user_id)
+                await callback.message.answer(
+                    f"🤝 НИЧЬЯ!\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            
+            await callback.answer()
+            return
+        
+        elif game == 'slot':
+            # Анимация для слотов
+            await callback.message.edit_text("🎰 КРУТИМ БАРАБАНЫ...")
+            await asyncio.sleep(0.5)
+            
+            # Отправляем анимацию слотов (отдельные сообщения)
+            symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣']
+            slot1 = random.choice(symbols)
+            slot2 = random.choice(symbols)
+            slot3 = random.choice(symbols)
+            
+            # Анимация вращения
+            await callback.message.answer(f"🎰 {random.choice(symbols)} {random.choice(symbols)} {random.choice(symbols)}")
+            await asyncio.sleep(0.2)
+            await callback.message.answer(f"🎰 {random.choice(symbols)} {random.choice(symbols)} {random.choice(symbols)}")
+            await asyncio.sleep(0.2)
+            await callback.message.answer(f"🎰 {random.choice(symbols)} {random.choice(symbols)} {random.choice(symbols)}")
+            await asyncio.sleep(0.3)
+            
+            # Результат
+            result = [slot1, slot2, slot3]
+            
+            if slot1 == slot2 == slot3:
+                if slot1 == '💎':
+                    win = bet * 20 * boost
+                    await Database.update_balance(user_id, win)
+                    await Database.update_stats(user_id, True)
+                    await Database.add_game_history(user_id, game, bet, win, 'win')
+                    balance = await Database.get_balance(user_id)
+                    await callback.message.answer(
+                        f"🎰 {' '.join(result)} 💎 ДЖЕКПОТ!\n"
+                        f"💰 +{win:.1f} монет! (x{20 * boost:.1f})\n\n"
+                        f"💳 Баланс: {balance:.1f} монет",
+                        reply_markup=games_keyboard()
+                    )
+                elif slot1 == '7️⃣':
+                    win = bet * 15 * boost
+                    await Database.update_balance(user_id, win)
+                    await Database.update_stats(user_id, True)
+                    await Database.add_game_history(user_id, game, bet, win, 'win')
+                    balance = await Database.get_balance(user_id)
+                    await callback.message.answer(
+                        f"🎰 {' '.join(result)} 🎰 СЕМЁРКИ!\n"
+                        f"💰 +{win:.1f} монет! (x{15 * boost:.1f})\n\n"
+                        f"💳 Баланс: {balance:.1f} монет",
+                        reply_markup=games_keyboard()
+                    )
+                else:
+                    win = bet * 10 * boost
+                    await Database.update_balance(user_id, win)
+                    await Database.update_stats(user_id, True)
+                    await Database.add_game_history(user_id, game, bet, win, 'win')
+                    balance = await Database.get_balance(user_id)
+                    await callback.message.answer(
+                        f"🎰 {' '.join(result)} 🎰 ТРИ В РЯД!\n"
+                        f"💰 +{win:.1f} монет! (x{10 * boost:.1f})\n\n"
+                        f"💳 Баланс: {balance:.1f} монет",
+                        reply_markup=games_keyboard()
+                    )
+            elif slot1 == slot2 or slot2 == slot3:
+                await Database.add_game_history(user_id, game, bet, bet, 'draw')
+                balance = await Database.get_balance(user_id)
+                await callback.message.answer(
+                    f"🎰 {' '.join(result)} 🔄 ДВА В РЯД!\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            else:
+                win = -bet
+                await Database.update_balance(user_id, win)
+                await Database.update_stats(user_id, False)
+                await Database.add_game_history(user_id, game, bet, win, 'loss')
+                balance = await Database.get_balance(user_id)
+                await callback.message.answer(
+                    f"🎰 {' '.join(result)} ❌ Ничего не совпало!\n"
+                    f"💸 -{bet} монет!\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            
+            await callback.answer()
+            return
+    
+    @dp.callback_query_handler(lambda c: c.data.startswith('custom_bet_'))
+    async def custom_bet(callback: types.CallbackQuery):
+        user_id = callback.from_user.id
+        if user_id not in user_sessions:
+            await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
+            return
+        
+        game = callback.data.replace('custom_bet_', '')
+        await callback.message.edit_text(
+            f"✏️ Отправь сообщением сумму ставки от {MIN_BET} до {MAX_BET}:\n\n"
+            f"Игра: {game.upper()}\n"
+            f"💰 Баланс: {await Database.get_balance(user_id)} монет",
+            reply_markup=InlineKeyboardMarkup().add(
+                InlineKeyboardButton("🔙 Назад", callback_data="games")
+            )
+        )
+        await callback.answer()
