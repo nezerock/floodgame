@@ -6,8 +6,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 if not BOT_TOKEN:
     print("❌ BOT_TOKEN не найден в переменных окружения!")
-    print(f"Доступные переменные: {list(os.environ.keys())}")
-    print("На Railway: добавьте переменную BOT_TOKEN в Dashboard")
+    print("Доступные переменные:", list(os.environ.keys()))
     sys.exit(1)
 
 # Настройки игры
