@@ -12,6 +12,7 @@ import re
 
 user_cooldowns = {}
 user_sessions = {}
+user_game_data = {}  # Храним временные данные игры
 
 def main_keyboard():
     keyboard = InlineKeyboardMarkup(row_width=2)
@@ -64,19 +65,20 @@ def shop_keyboard():
     )
     return keyboard
 
+async def delete_message_after_delay(message, delay: int = 5):
+    """Удалить сообщение через delay секунд"""
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except:
+        pass
+
 def parse_dice_result(text: str) -> int:
     """Парсим результат броска кубика из текста"""
+    # Ищем цифру после 🎲
     match = re.search(r'🎲\s*(\d+)', text)
     if match:
         return int(match.group(1))
-    return None
-
-def parse_slot_result(text: str) -> list:
-    """Парсим результат слота из текста"""
-    # В ответе слота приходит что-то вроде: "🎰 🍒 🍋 🍊"
-    match = re.search(r'🎰\s*([🍒🍋🍊🍇🔔💎7️⃣])\s*([🍒🍋🍊🍇🔔💎7️⃣])\s*([🍒🍋🍊🍇🔔💎7️⃣])', text)
-    if match:
-        return [match.group(1), match.group(2), match.group(3)]
     return None
 
 def register_handlers(dp: Dispatcher):
@@ -310,10 +312,14 @@ def register_handlers(dp: Dispatcher):
             return
         
         item_name = callback.data.replace('shop_', '')
+        
         if item_name == 'time':
+            # Переключаемся на режим ввода часов
+            user_game_data[user_id] = {'state': 'shop_time'}
             await callback.message.edit_text(
                 "⏱ Отправь сообщением количество часов (1-24):\n\n"
-                "Стоимость: цена бонуса × количество часов",
+                "💡 Стоимость: цена бонуса × количество часов\n"
+                "Пример: для бонуса x1.3 (25💰) на 3 часа = 75💰",
                 reply_markup=InlineKeyboardMarkup().add(
                     InlineKeyboardButton("🔙 Назад", callback_data="shop")
                 )
@@ -325,6 +331,13 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Неверный выбор!")
             return
         
+        # Сохраняем выбранный бонус
+        user_game_data[user_id] = {
+            'state': 'shop_confirm',
+            'item': item_name,
+            'hours': 1
+        }
+        
         item = SHOP_ITEMS[item_name]
         balance = await Database.get_balance(user_id)
         
@@ -332,12 +345,48 @@ def register_handlers(dp: Dispatcher):
             await callback.answer(f"❌ Недостаточно монет! Нужно: {item['price']}", show_alert=True)
             return
         
-        await Database.update_balance(user_id, -item['price'])
-        await Database.set_boost(user_id, item['multiplier'], 1)
+        await callback.message.edit_text(
+            f"✅ Выбран бонус x{item['multiplier']}\n"
+            f"💰 Цена: {item['price']} монет за 1 час\n"
+            f"⏱ Длительность: 1 час\n\n"
+            f"Нажми 'Купить' для подтверждения или измени время:",
+            reply_markup=InlineKeyboardMarkup(row_width=2).add(
+                InlineKeyboardButton("✅ Купить", callback_data=f"shop_confirm_{item_name}_1"),
+                InlineKeyboardButton("⏱ Изменить время", callback_data="shop_time"),
+                InlineKeyboardButton("🔙 Назад", callback_data="shop")
+            )
+        )
+        await callback.answer()
+    
+    @dp.callback_query_handler(lambda c: c.data.startswith('shop_confirm_'))
+    async def shop_confirm(callback: types.CallbackQuery):
+        user_id = callback.from_user.id
+        if user_id not in user_sessions:
+            await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
+            return
+        
+        data = callback.data.split('_')
+        item_name = data[2]
+        hours = int(data[3])
+        
+        if item_name not in SHOP_ITEMS:
+            await callback.answer("❌ Неверный выбор!")
+            return
+        
+        item = SHOP_ITEMS[item_name]
+        total_price = item['price'] * hours
+        balance = await Database.get_balance(user_id)
+        
+        if balance < total_price:
+            await callback.answer(f"❌ Недостаточно монет! Нужно: {total_price}", show_alert=True)
+            return
+        
+        await Database.update_balance(user_id, -total_price)
+        await Database.set_boost(user_id, item['multiplier'], hours)
         balance = await Database.get_balance(user_id)
         
         await callback.message.edit_text(
-            f"✅ Куплен бонус x{item['multiplier']} на 1 час!\n\n"
+            f"✅ Куплен бонус x{item['multiplier']} на {hours} час(ов)!\n\n"
             f"💰 Баланс: {balance} монет\n"
             f"🔥 Теперь выигрыши увеличены в {item['multiplier']}x!",
             reply_markup=shop_keyboard()
@@ -351,6 +400,7 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
             return
         
+        user_game_data[user_id] = {'state': 'shop_time'}
         await callback.message.edit_text(
             "⏱ Отправь сообщением количество часов (1-24):\n\n"
             "💡 Стоимость: цена бонуса × количество часов\n"
@@ -365,33 +415,61 @@ def register_handlers(dp: Dispatcher):
     async def handle_text(message: types.Message):
         user_id = message.from_user.id
         
-        try:
-            hours = int(message.text.strip())
-            if 1 <= hours <= 24:
-                if user_id not in user_sessions:
+        # Проверка: пользователь в режиме ввода часов
+        if user_id in user_game_data and user_game_data[user_id].get('state') == 'shop_time':
+            try:
+                hours = int(message.text.strip())
+                if 1 <= hours <= 24:
+                    # Проверяем, есть ли выбранный бонус
+                    if 'item' in user_game_data[user_id]:
+                        item_name = user_game_data[user_id]['item']
+                        item = SHOP_ITEMS[item_name]
+                        total_price = item['price'] * hours
+                        balance = await Database.get_balance(user_id)
+                        
+                        await message.delete()  # Удаляем сообщение с числом
+                        
+                        await message.answer(
+                            f"✅ Выбрано {hours} час(ов) для бонуса x{item['multiplier']}\n"
+                            f"💰 Цена: {total_price} монет\n\n"
+                            f"Нажми 'Купить' для подтверждения:",
+                            reply_markup=InlineKeyboardMarkup().add(
+                                InlineKeyboardButton("✅ Купить", callback_data=f"shop_confirm_{item_name}_{hours}"),
+                                InlineKeyboardButton("🔙 Назад", callback_data="shop")
+                            )
+                        )
+                    else:
+                        # Сначала выбери бонус
+                        await message.answer(
+                            "⚠️ Сначала выбери бонус в магазине!",
+                            reply_markup=shop_keyboard()
+                        )
                     return
-                
-                await message.answer(
-                    f"⏱ Выбрано {hours} час(ов). Теперь выбери бонус в магазине!\n"
-                    f"💡 Цена: бонус × {hours}",
-                    reply_markup=shop_keyboard()
-                )
-                return
-        except:
-            pass
+                else:
+                    await message.answer("❌ Введи число от 1 до 24!")
+            except:
+                await message.answer("❌ Введи число!")
+            return
         
+        # Проверка: ввод ставки
         try:
             bet = int(message.text.strip())
             if MIN_BET <= bet <= MAX_BET:
                 if user_id not in user_sessions:
+                    await message.answer("❌ Напиши /start чтобы начать!")
                     return
                 
-                await play_game_direct(message, bet)
-                return
+                # Проверяем, есть ли активная игра
+                if user_id in user_game_data and user_game_data[user_id].get('state') == 'bet_input':
+                    game = user_game_data[user_id].get('game', 'dice')
+                    await message.delete()  # Удаляем сообщение со ставкой
+                    await process_game(message, game, bet)
+                    return
         except:
             pass
     
-    async def play_game_direct(message: types.Message, bet: int):
+    async def process_game(message: types.Message, game: str, bet: int):
+        """Обработка игры"""
         user_id = message.from_user.id
         balance = await Database.get_balance(user_id)
         
@@ -401,17 +479,163 @@ def register_handlers(dp: Dispatcher):
         
         boost, _ = await Database.get_boost(user_id)
         
-        # Отправляем анимированный кубик
-        await message.answer("🎲 Бросаем кубики...")
+        if game == 'dice':
+            # Отправляем сообщение о начале игры
+            start_msg = await message.answer("🎲 БРОСАЕМ КУБИКИ...")
+            
+            # Ждём немного
+            await asyncio.sleep(0.5)
+            
+            # Бот кидает кубик (отдельное сообщение с анимацией 🎲)
+            bot_dice_msg = await message.answer("🤖 БРОСОК БОТА: 🎲")
+            
+            # Ждём анимацию
+            await asyncio.sleep(1)
+            
+            # Игрок кидает кубик (отдельное сообщение с анимацией 🎲)
+            player_dice_msg = await message.answer("🎯 ТВОЙ БРОСОК: 🎲")
+            
+            # Ждём анимацию
+            await asyncio.sleep(1)
+            
+            # Парсим результаты из сообщений
+            bot_text = bot_dice_msg.text
+            player_text = player_dice_msg.text
+            
+            # Извлекаем числа
+            bot_roll = parse_dice_result(bot_text)
+            player_roll = parse_dice_result(player_text)
+            
+            # Если не удалось спарсить - используем случайные
+            if bot_roll is None:
+                bot_roll = random.randint(1, 6)
+            if player_roll is None:
+                player_roll = random.randint(1, 6)
+            
+            # Определяем победителя
+            if player_roll > bot_roll:
+                win_amount = bet * 1.7 * boost
+                await Database.update_balance(user_id, win_amount)
+                await Database.update_stats(user_id, True)
+                await Database.add_game_history(user_id, game, bet, win_amount, 'win')
+                balance = await Database.get_balance(user_id)
+                result_msg = await message.answer(
+                    f"🏆 ТЫ ПОБЕДИЛ!\n"
+                    f"🎯 Твой бросок: {player_roll}\n"
+                    f"🤖 Бросок бота: {bot_roll}\n"
+                    f"💰 +{win_amount:.1f} монет! (x{1.7 * boost:.1f})\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            elif player_roll < bot_roll:
+                win_amount = -bet
+                await Database.update_balance(user_id, win_amount)
+                await Database.update_stats(user_id, False)
+                await Database.add_game_history(user_id, game, bet, win_amount, 'loss')
+                balance = await Database.get_balance(user_id)
+                result_msg = await message.answer(
+                    f"😢 БОТ ПОБЕДИЛ!\n"
+                    f"🎯 Твой бросок: {player_roll}\n"
+                    f"🤖 Бросок бота: {bot_roll}\n"
+                    f"💸 -{bet} монет!\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            else:
+                await Database.add_game_history(user_id, game, bet, 0, 'draw')
+                balance = await Database.get_balance(user_id)
+                result_msg = await message.answer(
+                    f"🤝 НИЧЬЯ!\n"
+                    f"🎯 Твой бросок: {player_roll}\n"
+                    f"🤖 Бросок бота: {bot_roll}\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            
+            # Удаляем старые сообщения через 5 секунд
+            await asyncio.sleep(5)
+            await delete_message_after_delay(start_msg, 0)
+            await delete_message_after_delay(bot_dice_msg, 0)
+            await delete_message_after_delay(player_dice_msg, 0)
+            await delete_message_after_delay(result_msg, 15)
         
-        # Ждём результат через следующий хендлер
-        # Результат придёт в сообщении, которое нужно спарсить
-        
-        # Сохраняем состояние игры
-        # Для этого используем временные данные
-        
-        # Результат будет обработан в следующем сообщении
-        await message.answer("Ожидайте результат...")
+        elif game == 'slot':
+            # Слоты
+            start_msg = await message.answer("🎰 КРУТИМ БАРАБАНЫ...")
+            await asyncio.sleep(1)
+            
+            # Отправляем анимированный слот
+            slot_msg = await message.answer("🎰 🍒 🍋 🍊")
+            await asyncio.sleep(1)
+            
+            symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣']
+            slot1 = random.choice(symbols)
+            slot2 = random.choice(symbols)
+            slot3 = random.choice(symbols)
+            
+            if slot1 == slot2 == slot3:
+                if slot1 == '💎':
+                    win = bet * 20 * boost
+                    await Database.update_balance(user_id, win)
+                    await Database.update_stats(user_id, True)
+                    await Database.add_game_history(user_id, game, bet, win, 'win')
+                    balance = await Database.get_balance(user_id)
+                    result_msg = await message.answer(
+                        f"🎰 {slot1} {slot2} {slot3} 💎 ДЖЕКПОТ!\n"
+                        f"💰 +{win:.1f} монет! (x{20 * boost:.1f})\n\n"
+                        f"💳 Баланс: {balance:.1f} монет",
+                        reply_markup=games_keyboard()
+                    )
+                elif slot1 == '7️⃣':
+                    win = bet * 15 * boost
+                    await Database.update_balance(user_id, win)
+                    await Database.update_stats(user_id, True)
+                    await Database.add_game_history(user_id, game, bet, win, 'win')
+                    balance = await Database.get_balance(user_id)
+                    result_msg = await message.answer(
+                        f"🎰 {slot1} {slot2} {slot3} 🎰 СЕМЁРКИ!\n"
+                        f"💰 +{win:.1f} монет! (x{15 * boost:.1f})\n\n"
+                        f"💳 Баланс: {balance:.1f} монет",
+                        reply_markup=games_keyboard()
+                    )
+                else:
+                    win = bet * 10 * boost
+                    await Database.update_balance(user_id, win)
+                    await Database.update_stats(user_id, True)
+                    await Database.add_game_history(user_id, game, bet, win, 'win')
+                    balance = await Database.get_balance(user_id)
+                    result_msg = await message.answer(
+                        f"🎰 {slot1} {slot2} {slot3} 🎰 ТРИ В РЯД!\n"
+                        f"💰 +{win:.1f} монет! (x{10 * boost:.1f})\n\n"
+                        f"💳 Баланс: {balance:.1f} монет",
+                        reply_markup=games_keyboard()
+                    )
+            elif slot1 == slot2 or slot2 == slot3:
+                await Database.add_game_history(user_id, game, bet, bet, 'draw')
+                balance = await Database.get_balance(user_id)
+                result_msg = await message.answer(
+                    f"🎰 {slot1} {slot2} {slot3} 🔄 ДВА В РЯД!\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            else:
+                win = -bet
+                await Database.update_balance(user_id, win)
+                await Database.update_stats(user_id, False)
+                await Database.add_game_history(user_id, game, bet, win, 'loss')
+                balance = await Database.get_balance(user_id)
+                result_msg = await message.answer(
+                    f"🎰 {slot1} {slot2} {slot3} ❌ Ничего не совпало!\n"
+                    f"💸 -{bet} монет!\n\n"
+                    f"💳 Баланс: {balance:.1f} монет",
+                    reply_markup=games_keyboard()
+                )
+            
+            # Удаляем старые сообщения
+            await asyncio.sleep(5)
+            await delete_message_after_delay(start_msg, 0)
+            await delete_message_after_delay(slot_msg, 0)
+            await delete_message_after_delay(result_msg, 15)
     
     @dp.callback_query_handler(lambda c: c.data.startswith('game_'))
     async def game_handler(callback: types.CallbackQuery):
@@ -449,182 +673,9 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Недостаточно монет!")
             return
         
-        boost, _ = await Database.get_boost(user_id)
-        
-        if game == 'dice':
-            # Отправляем анимированный кубик 🎲
-            await callback.message.answer("🎲 БРОСАЕМ КУБИКИ...")
-            
-            # Теперь ждём, что пользователь тоже кинет кубик
-            # Для этого используем следующий хендлер для текстовых сообщений
-            
-            await callback.message.answer(
-                "🔥 Теперь твой бросок!\nКидай кубик 🎲 в ответ на это сообщение",
-                reply_markup=InlineKeyboardMarkup().add(
-                    InlineKeyboardButton("🎲 Кинуть кубик", callback_data=f"roll_dice_{bet}_{boost}")
-                )
-            )
-            await callback.answer()
-            return
-        
-        elif game == 'slot':
-            # Для слота используем 🎰
-            await callback.message.answer("🎰 КРУТИМ БАРАБАНЫ...")
-            await asyncio.sleep(1.0)
-            
-            # Анимированный слот сам показывает результат
-            # Парсим результат из сообщения
-            result_msg = await callback.message.answer("🎰 🍒 🍋 🍊")
-            result_text = result_msg.text
-            
-            # Парсим результат
-            symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣']
-            # Здесь нужно спарсить результат из сообщения
-            # В реальности результат приходит в виде: "🎰 🍒 🍋 🍊"
-            
-            # Для демонстрации используем случайный результат
-            slot1 = random.choice(symbols)
-            slot2 = random.choice(symbols)
-            slot3 = random.choice(symbols)
-            result = [slot1, slot2, slot3]
-            
-            if slot1 == slot2 == slot3:
-                if slot1 == '💎':
-                    win = bet * 20 * boost
-                    await Database.update_balance(user_id, win)
-                    await Database.update_stats(user_id, True)
-                    await Database.add_game_history(user_id, game, bet, win, 'win')
-                    balance = await Database.get_balance(user_id)
-                    await callback.message.answer(
-                        f"🎰 {' '.join(result)} 💎 ДЖЕКПОТ!\n"
-                        f"💰 +{win:.1f} монет! (x{20 * boost:.1f})\n\n"
-                        f"💳 Баланс: {balance:.1f} монет",
-                        reply_markup=games_keyboard()
-                    )
-                elif slot1 == '7️⃣':
-                    win = bet * 15 * boost
-                    await Database.update_balance(user_id, win)
-                    await Database.update_stats(user_id, True)
-                    await Database.add_game_history(user_id, game, bet, win, 'win')
-                    balance = await Database.get_balance(user_id)
-                    await callback.message.answer(
-                        f"🎰 {' '.join(result)} 🎰 СЕМЁРКИ!\n"
-                        f"💰 +{win:.1f} монет! (x{15 * boost:.1f})\n\n"
-                        f"💳 Баланс: {balance:.1f} монет",
-                        reply_markup=games_keyboard()
-                    )
-                else:
-                    win = bet * 10 * boost
-                    await Database.update_balance(user_id, win)
-                    await Database.update_stats(user_id, True)
-                    await Database.add_game_history(user_id, game, bet, win, 'win')
-                    balance = await Database.get_balance(user_id)
-                    await callback.message.answer(
-                        f"🎰 {' '.join(result)} 🎰 ТРИ В РЯД!\n"
-                        f"💰 +{win:.1f} монет! (x{10 * boost:.1f})\n\n"
-                        f"💳 Баланс: {balance:.1f} монет",
-                        reply_markup=games_keyboard()
-                    )
-            elif slot1 == slot2 or slot2 == slot3:
-                await Database.add_game_history(user_id, game, bet, bet, 'draw')
-                balance = await Database.get_balance(user_id)
-                await callback.message.answer(
-                    f"🎰 {' '.join(result)} 🔄 ДВА В РЯД!\n"
-                    f"💳 Баланс: {balance:.1f} монет",
-                    reply_markup=games_keyboard()
-                )
-            else:
-                win = -bet
-                await Database.update_balance(user_id, win)
-                await Database.update_stats(user_id, False)
-                await Database.add_game_history(user_id, game, bet, win, 'loss')
-                balance = await Database.get_balance(user_id)
-                await callback.message.answer(
-                    f"🎰 {' '.join(result)} ❌ Ничего не совпало!\n"
-                    f"💸 -{bet} монет!\n\n"
-                    f"💳 Баланс: {balance:.1f} монет",
-                    reply_markup=games_keyboard()
-                )
-            
-            await callback.answer()
-            return
-    
-    @dp.callback_query_handler(lambda c: c.data.startswith('roll_dice_'))
-    async def roll_dice(callback: types.CallbackQuery):
-        """Обработчик броска кубика игроком"""
-        user_id = callback.from_user.id
-        if user_id not in user_sessions:
-            await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
-            return
-        
-        data = callback.data.split('_')
-        bet = int(data[2])
-        boost = float(data[3])
-        
-        # Бот кидает кубик
-        bot_msg = await callback.message.answer("🤖 БРОСОК БОТА: 🎲")
-        await asyncio.sleep(0.5)
-        
-        # Игрок кидает кубик
-        player_msg = await callback.message.answer("🎯 ТВОЙ БРОСОК: 🎲")
-        await asyncio.sleep(0.5)
-        
-        # Парсим результаты
-        bot_text = bot_msg.text
-        player_text = player_msg.text
-        
-        # Извлекаем числа из сообщений
-        bot_match = re.search(r'🎲\s*(\d+)', bot_text)
-        player_match = re.search(r'🎲\s*(\d+)', player_text)
-        
-        if bot_match and player_match:
-            bot_roll = int(bot_match.group(1))
-            player_roll = int(player_match.group(1))
-        else:
-            # Если не удалось спарсить, используем случайные числа
-            bot_roll = random.randint(1, 6)
-            player_roll = random.randint(1, 6)
-        
-        # Определяем победителя
-        if player_roll > bot_roll:
-            win_amount = bet * 1.7 * boost
-            await Database.update_balance(user_id, win_amount)
-            await Database.update_stats(user_id, True)
-            await Database.add_game_history(user_id, 'dice', bet, win_amount, 'win')
-            balance = await Database.get_balance(user_id)
-            await callback.message.answer(
-                f"🏆 ТЫ ПОБЕДИЛ!\n"
-                f"🎯 Твой бросок: {player_roll}\n"
-                f"🤖 Бросок бота: {bot_roll}\n"
-                f"💰 +{win_amount:.1f} монет! (x{1.7 * boost:.1f})\n\n"
-                f"💳 Баланс: {balance:.1f} монет",
-                reply_markup=games_keyboard()
-            )
-        elif player_roll < bot_roll:
-            win_amount = -bet
-            await Database.update_balance(user_id, win_amount)
-            await Database.update_stats(user_id, False)
-            await Database.add_game_history(user_id, 'dice', bet, win_amount, 'loss')
-            balance = await Database.get_balance(user_id)
-            await callback.message.answer(
-                f"😢 БОТ ПОБЕДИЛ!\n"
-                f"🎯 Твой бросок: {player_roll}\n"
-                f"🤖 Бросок бота: {bot_roll}\n"
-                f"💸 -{bet} монет!\n\n"
-                f"💳 Баланс: {balance:.1f} монет",
-                reply_markup=games_keyboard()
-            )
-        else:
-            await Database.add_game_history(user_id, 'dice', bet, 0, 'draw')
-            balance = await Database.get_balance(user_id)
-            await callback.message.answer(
-                f"🤝 НИЧЬЯ!\n"
-                f"🎯 Твой бросок: {player_roll}\n"
-                f"🤖 Бросок бота: {bot_roll}\n"
-                f"💳 Баланс: {balance:.1f} монет",
-                reply_markup=games_keyboard()
-            )
-        
+        # Запускаем игру
+        await callback.message.delete()
+        await process_game(callback.message, game, bet)
         await callback.answer()
     
     @dp.callback_query_handler(lambda c: c.data.startswith('custom_bet_'))
@@ -635,6 +686,13 @@ def register_handlers(dp: Dispatcher):
             return
         
         game = callback.data.replace('custom_bet_', '')
+        
+        # Сохраняем состояние для ввода ставки
+        user_game_data[user_id] = {
+            'state': 'bet_input',
+            'game': game
+        }
+        
         await callback.message.edit_text(
             f"✏️ Отправь сообщением сумму ставки от {MIN_BET} до {MAX_BET}:\n\n"
             f"Игра: {game.upper()}\n"
