@@ -1,11 +1,10 @@
 import aiosqlite
 from datetime import datetime, timedelta
-from config import START_BALANCE, DAILY_BONUS  # 👈 ДОБАВЛЯЕМ ИМПОРТ!
+from config import START_BALANCE, DAILY_BONUS, CLICK_REWARD, MAX_CLICKS_PER_DAY
 
 DB_PATH = "casino.db"
 
 async def init_db():
-    """Инициализация базы данных"""
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
@@ -17,7 +16,9 @@ async def init_db():
                 total_losses INTEGER DEFAULT 0,
                 last_daily_bonus TEXT,
                 games_played INTEGER DEFAULT 0,
-                created_at TEXT
+                created_at TEXT,
+                clicks_today INTEGER DEFAULT 0,
+                last_click_time TEXT
             )
         ''')
         
@@ -38,7 +39,6 @@ async def init_db():
 class Database:
     @staticmethod
     async def get_user(user_id: int):
-        """Получить данные пользователя"""
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
                 'SELECT * FROM users WHERE user_id = ?', (user_id,)
@@ -47,7 +47,6 @@ class Database:
     
     @staticmethod
     async def create_user(user_id: int, username: str = None, first_name: str = None):
-        """Создать нового пользователя"""
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 INSERT OR IGNORE INTO users 
@@ -58,7 +57,6 @@ class Database:
     
     @staticmethod
     async def update_balance(user_id: int, amount: int):
-        """Обновить баланс пользователя"""
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 UPDATE users 
@@ -69,7 +67,6 @@ class Database:
     
     @staticmethod
     async def get_balance(user_id: int) -> int:
-        """Получить баланс пользователя"""
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
                 'SELECT balance FROM users WHERE user_id = ?', (user_id,)
@@ -79,7 +76,6 @@ class Database:
     
     @staticmethod
     async def can_claim_daily(user_id: int) -> bool:
-        """Проверить, можно ли получить ежедневный бонус"""
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute(
                 'SELECT last_daily_bonus FROM users WHERE user_id = ?', (user_id,)
@@ -92,7 +88,6 @@ class Database:
     
     @staticmethod
     async def claim_daily(user_id: int):
-        """Получить ежедневный бонус"""
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 UPDATE users 
@@ -104,7 +99,6 @@ class Database:
     
     @staticmethod
     async def update_stats(user_id: int, win: bool):
-        """Обновить статистику игр"""
         async with aiosqlite.connect(DB_PATH) as db:
             if win:
                 await db.execute('''
@@ -124,7 +118,6 @@ class Database:
     
     @staticmethod
     async def add_game_history(user_id: int, game_type: str, bet: int, win: int, result: str):
-        """Добавить запись в историю игр"""
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 INSERT INTO game_history 
@@ -135,7 +128,6 @@ class Database:
     
     @staticmethod
     async def get_leaderboard(limit: int = 10):
-        """Получить таблицу лидеров по балансу"""
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute('''
                 SELECT user_id, username, first_name, balance, total_wins, games_played
@@ -144,3 +136,33 @@ class Database:
                 LIMIT ?
             ''', (limit,)) as cursor:
                 return await cursor.fetchall()
+    
+    @staticmethod
+    async def get_clicks_today(user_id: int) -> int:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute(
+                'SELECT clicks_today, last_click_time FROM users WHERE user_id = ?', (user_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    return 0
+                clicks, last_time = row
+                if last_time:
+                    last_date = datetime.fromisoformat(last_time).date()
+                    today = datetime.now().date()
+                    if last_date != today:
+                        return 0
+                return clicks or 0
+    
+    @staticmethod
+    async def add_click(user_id: int):
+        async with aiosqlite.connect(DB_PATH) as db:
+            today = datetime.now().isoformat()
+            await db.execute('''
+                UPDATE users 
+                SET clicks_today = clicks_today + 1,
+                    balance = balance + ?,
+                    last_click_time = ?
+                WHERE user_id = ?
+            ''', (CLICK_REWARD, today, user_id))
+            await db.commit()
