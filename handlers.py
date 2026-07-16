@@ -12,7 +12,7 @@ import re
 
 user_cooldowns = {}
 user_sessions = {}
-user_game_data = {}  # Храним временные данные игры
+user_game_data = {}
 
 def main_keyboard():
     keyboard = InlineKeyboardMarkup(row_width=2)
@@ -65,17 +65,16 @@ def shop_keyboard():
     )
     return keyboard
 
-async def delete_message_after_delay(message, delay: int = 5):
+async def delete_message_later(msg, delay: int):
     """Удалить сообщение через delay секунд"""
     await asyncio.sleep(delay)
     try:
-        await message.delete()
+        await msg.delete()
     except:
         pass
 
 def parse_dice_result(text: str) -> int:
     """Парсим результат броска кубика из текста"""
-    # Ищем цифру после 🎲
     match = re.search(r'🎲\s*(\d+)', text)
     if match:
         return int(match.group(1))
@@ -314,7 +313,6 @@ def register_handlers(dp: Dispatcher):
         item_name = callback.data.replace('shop_', '')
         
         if item_name == 'time':
-            # Переключаемся на режим ввода часов
             user_game_data[user_id] = {'state': 'shop_time'}
             await callback.message.edit_text(
                 "⏱ Отправь сообщением количество часов (1-24):\n\n"
@@ -331,7 +329,6 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Неверный выбор!")
             return
         
-        # Сохраняем выбранный бонус
         user_game_data[user_id] = {
             'state': 'shop_confirm',
             'item': item_name,
@@ -420,14 +417,13 @@ def register_handlers(dp: Dispatcher):
             try:
                 hours = int(message.text.strip())
                 if 1 <= hours <= 24:
-                    # Проверяем, есть ли выбранный бонус
                     if 'item' in user_game_data[user_id]:
                         item_name = user_game_data[user_id]['item']
                         item = SHOP_ITEMS[item_name]
                         total_price = item['price'] * hours
                         balance = await Database.get_balance(user_id)
                         
-                        await message.delete()  # Удаляем сообщение с числом
+                        await message.delete()
                         
                         await message.answer(
                             f"✅ Выбрано {hours} час(ов) для бонуса x{item['multiplier']}\n"
@@ -439,7 +435,6 @@ def register_handlers(dp: Dispatcher):
                             )
                         )
                     else:
-                        # Сначала выбери бонус
                         await message.answer(
                             "⚠️ Сначала выбери бонус в магазине!",
                             reply_markup=shop_keyboard()
@@ -459,17 +454,16 @@ def register_handlers(dp: Dispatcher):
                     await message.answer("❌ Напиши /start чтобы начать!")
                     return
                 
-                # Проверяем, есть ли активная игра
                 if user_id in user_game_data and user_game_data[user_id].get('state') == 'bet_input':
                     game = user_game_data[user_id].get('game', 'dice')
-                    await message.delete()  # Удаляем сообщение со ставкой
+                    await message.delete()
                     await process_game(message, game, bet)
                     return
         except:
             pass
     
     async def process_game(message: types.Message, game: str, bet: int):
-        """Обработка игры"""
+        """Обработка игры с правильной анимацией"""
         user_id = message.from_user.id
         balance = await Database.get_balance(user_id)
         
@@ -480,39 +474,44 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         
         if game == 'dice':
-            # Отправляем сообщение о начале игры
-            start_msg = await message.answer("🎲 БРОСАЕМ КУБИКИ...")
+            # ========== ИГРА В КОСТИ ==========
             
-            # Ждём немного
+            # 1. Сообщение о начале игры
+            start_msg = await message.answer("🎲 НАЧИНАЕМ ИГРУ В КОСТИ!")
+            
+            # 2. Бот кидает кубик - ТОЛЬКО ЭМОДЗИ 🎲
             await asyncio.sleep(0.5)
-            
-            # Бот кидает кубик (отдельное сообщение с анимацией 🎲)
-            bot_dice_msg = await message.answer("🤖 БРОСОК БОТА: 🎲")
+            bot_roll_msg = await message.answer("🎲")
             
             # Ждём анимацию
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
             
-            # Игрок кидает кубик (отдельное сообщение с анимацией 🎲)
-            player_dice_msg = await message.answer("🎯 ТВОЙ БРОСОК: 🎲")
-            
-            # Ждём анимацию
-            await asyncio.sleep(1)
-            
-            # Парсим результаты из сообщений
-            bot_text = bot_dice_msg.text
-            player_text = player_dice_msg.text
-            
-            # Извлекаем числа
+            # Получаем результат
+            bot_text = bot_roll_msg.text
             bot_roll = parse_dice_result(bot_text)
-            player_roll = parse_dice_result(player_text)
-            
-            # Если не удалось спарсить - используем случайные
             if bot_roll is None:
                 bot_roll = random.randint(1, 6)
+            
+            # 3. Игрок кидает кубик - ТОЛЬКО ЭМОДЗИ 🎲
+            await asyncio.sleep(0.5)
+            player_roll_msg = await message.answer("🎲")
+            
+            # Ждём анимацию
+            await asyncio.sleep(2)
+            
+            # Получаем результат
+            player_text = player_roll_msg.text
+            player_roll = parse_dice_result(player_text)
             if player_roll is None:
                 player_roll = random.randint(1, 6)
             
-            # Определяем победителя
+            # 4. Показываем результаты
+            await asyncio.sleep(0.5)
+            result_text = (
+                f"🤖 Бросок бота: {bot_roll}\n"
+                f"🎯 Твой бросок: {player_roll}\n\n"
+            )
+            
             if player_roll > bot_roll:
                 win_amount = bet * 1.7 * boost
                 await Database.update_balance(user_id, win_amount)
@@ -520,9 +519,7 @@ def register_handlers(dp: Dispatcher):
                 await Database.add_game_history(user_id, game, bet, win_amount, 'win')
                 balance = await Database.get_balance(user_id)
                 result_msg = await message.answer(
-                    f"🏆 ТЫ ПОБЕДИЛ!\n"
-                    f"🎯 Твой бросок: {player_roll}\n"
-                    f"🤖 Бросок бота: {bot_roll}\n"
+                    f"🏆 ТЫ ПОБЕДИЛ!\n{result_text}"
                     f"💰 +{win_amount:.1f} монет! (x{1.7 * boost:.1f})\n\n"
                     f"💳 Баланс: {balance:.1f} монет",
                     reply_markup=games_keyboard()
@@ -534,9 +531,7 @@ def register_handlers(dp: Dispatcher):
                 await Database.add_game_history(user_id, game, bet, win_amount, 'loss')
                 balance = await Database.get_balance(user_id)
                 result_msg = await message.answer(
-                    f"😢 БОТ ПОБЕДИЛ!\n"
-                    f"🎯 Твой бросок: {player_roll}\n"
-                    f"🤖 Бросок бота: {bot_roll}\n"
+                    f"😢 БОТ ПОБЕДИЛ!\n{result_text}"
                     f"💸 -{bet} монет!\n\n"
                     f"💳 Баланс: {balance:.1f} монет",
                     reply_markup=games_keyboard()
@@ -545,29 +540,39 @@ def register_handlers(dp: Dispatcher):
                 await Database.add_game_history(user_id, game, bet, 0, 'draw')
                 balance = await Database.get_balance(user_id)
                 result_msg = await message.answer(
-                    f"🤝 НИЧЬЯ!\n"
-                    f"🎯 Твой бросок: {player_roll}\n"
-                    f"🤖 Бросок бота: {bot_roll}\n"
+                    f"🤝 НИЧЬЯ!\n{result_text}"
                     f"💳 Баланс: {balance:.1f} монет",
                     reply_markup=games_keyboard()
                 )
             
-            # Удаляем старые сообщения через 5 секунд
+            # Удаляем старые сообщения
             await asyncio.sleep(5)
-            await delete_message_after_delay(start_msg, 0)
-            await delete_message_after_delay(bot_dice_msg, 0)
-            await delete_message_after_delay(player_dice_msg, 0)
-            await delete_message_after_delay(result_msg, 15)
+            await delete_message_later(start_msg, 0)
+            await delete_message_later(bot_roll_msg, 0)
+            await delete_message_later(player_roll_msg, 0)
+            await delete_message_later(result_msg, 15)
         
         elif game == 'slot':
-            # Слоты
+            # ========== ИГРОВОЙ АВТОМАТ ==========
+            
+            # 1. Сообщение о начале
             start_msg = await message.answer("🎰 КРУТИМ БАРАБАНЫ...")
-            await asyncio.sleep(1)
             
-            # Отправляем анимированный слот
-            slot_msg = await message.answer("🎰 🍒 🍋 🍊")
-            await asyncio.sleep(1)
+            # 2. Анимация вращения - ТОЛЬКО 🎰
+            await asyncio.sleep(0.5)
+            slot_anim1 = await message.answer("🎰")
+            await asyncio.sleep(0.5)
+            slot_anim2 = await message.answer("🎰")
+            await asyncio.sleep(0.5)
+            slot_anim3 = await message.answer("🎰")
+            await asyncio.sleep(0.5)
             
+            # Удаляем анимацию
+            await delete_message_later(slot_anim1, 0)
+            await delete_message_later(slot_anim2, 0)
+            await delete_message_later(slot_anim3, 0)
+            
+            # 3. Результат
             symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣']
             slot1 = random.choice(symbols)
             slot2 = random.choice(symbols)
@@ -633,9 +638,8 @@ def register_handlers(dp: Dispatcher):
             
             # Удаляем старые сообщения
             await asyncio.sleep(5)
-            await delete_message_after_delay(start_msg, 0)
-            await delete_message_after_delay(slot_msg, 0)
-            await delete_message_after_delay(result_msg, 15)
+            await delete_message_later(start_msg, 0)
+            await delete_message_later(result_msg, 15)
     
     @dp.callback_query_handler(lambda c: c.data.startswith('game_'))
     async def game_handler(callback: types.CallbackQuery):
@@ -673,7 +677,6 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Недостаточно монет!")
             return
         
-        # Запускаем игру
         await callback.message.delete()
         await process_game(callback.message, game, bet)
         await callback.answer()
@@ -687,7 +690,6 @@ def register_handlers(dp: Dispatcher):
         
         game = callback.data.replace('custom_bet_', '')
         
-        # Сохраняем состояние для ввода ставки
         user_game_data[user_id] = {
             'state': 'bet_input',
             'game': game
