@@ -1,5 +1,6 @@
 import aiosqlite
 from datetime import datetime, timedelta
+from config import START_BALANCE, DAILY_BONUS  # 👈 ДОБАВЛЯЕМ ИМПОРТ!
 
 DB_PATH = "casino.db"
 
