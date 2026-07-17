@@ -30,7 +30,6 @@ async def save_message(user_id: int, msg):
 async def clear_user_messages(user_id: int, keep_last: int = 0):
     """Удаляем все сообщения пользователя, кроме последних keep_last"""
     if user_id in user_messages:
-        # Оставляем только последние keep_last сообщений
         if keep_last > 0 and len(user_messages[user_id]) > keep_last:
             to_delete = user_messages[user_id][:-keep_last]
             for msg in to_delete:
@@ -46,13 +45,6 @@ async def clear_user_messages(user_id: int, keep_last: int = 0):
                 except:
                     pass
             user_messages[user_id] = []
-
-async def delete_message_later(msg, delay: int):
-    await asyncio.sleep(delay)
-    try:
-        await msg.delete()
-    except:
-        pass
 
 def main_keyboard():
     keyboard = InlineKeyboardMarkup(
@@ -144,7 +136,7 @@ def register_handlers(dp: Dispatcher):
         # Удаляем старые сообщения
         await clear_user_messages(user_id)
         
-        # Создаём новую сессию (удаляем старую)
+        # Создаём новую сессию
         user_sessions[user_id] = True
         
         username = message.from_user.username
@@ -184,8 +176,8 @@ def register_handlers(dp: Dispatcher):
         
         await state.clear()
         
-        # Удаляем все сообщения, кроме последнего
-        await clear_user_messages(user_id, keep_last=1)
+        # Удаляем ВСЕ сообщения
+        await clear_user_messages(user_id)
         
         balance = await Database.get_balance(user_id)
         msg = await callback.message.edit_text(
@@ -563,7 +555,6 @@ def register_handlers(dp: Dispatcher):
             bot_dice = await bot.send_dice(chat_id=message.chat.id, emoji="🎲")
             await save_message(user_id, bot_dice)
             
-            # Ждём анимацию
             await asyncio.sleep(2.5)
             bot_roll = bot_dice.dice.value
             
@@ -575,7 +566,6 @@ def register_handlers(dp: Dispatcher):
             await asyncio.sleep(2.5)
             player_roll = player_dice.dice.value
             
-            # Результат
             await asyncio.sleep(0.5)
             result_text = (
                 f"🤖 Бросок бота: {bot_roll}\n"
@@ -595,8 +585,8 @@ def register_handlers(dp: Dispatcher):
                     reply_markup=games_keyboard()
                 )
             elif player_roll < bot_roll:
-                win_amount = -bet  # ОТРИЦАТЕЛЬНОЕ ЗНАЧЕНИЕ!
-                await Database.update_balance(user_id, win_amount)  # СПИСЫВАЕМ!
+                win_amount = -bet
+                await Database.update_balance(user_id, win_amount)
                 await Database.update_stats(user_id, False)
                 await Database.add_game_history(user_id, game, bet, win_amount, 'loss')
                 balance = await Database.get_balance(user_id)
@@ -626,154 +616,20 @@ def register_handlers(dp: Dispatcher):
             slot_msg = await bot.send_dice(chat_id=message.chat.id, emoji="🎰")
             await save_message(user_id, slot_msg)
             
-            # Ждём анимацию
             await asyncio.sleep(3.0)
             slot_value = slot_msg.dice.value
             
-            # Правильные эмодзи для слотов
+            # ПРАВИЛЬНЫЕ эмодзи для слотов (ТОЛЬКО 4!)
             slot_combinations = {
-                1: ['🍒', '🍒', '🍒'],
-                2: ['🍋', '🍋', '🍋'],
-                3: ['🍊', '🍊', '🍊'],
-                4: ['🍇', '🍇', '🍇'],
-                5: ['🔔', '🔔', '🔔'],
-                6: ['💎', '💎', '💎'],
+                1: ['🍋', '🍋', '🍋'],
+                2: ['🍇', '🍇', '🍇'],
+                3: ['📼', '📼', '📼'],
+                4: ['7️⃣', '7️⃣', '7️⃣'],
             }
             
             if slot_value in slot_combinations:
                 slot1, slot2, slot3 = slot_combinations[slot_value]
             else:
-                # Резерв - но такого не должно быть
-                symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣']
+                symbols = ['🍋', '🍇', '📼', '7️⃣']
                 slot1 = random.choice(symbols)
-                slot2 = random.choice(symbols)
-                slot3 = random.choice(symbols)
-            
-            await asyncio.sleep(0.5)
-            
-            # Результат
-            if slot1 == slot2 == slot3:
-                if slot1 == '💎':
-                    win = bet * 20 * boost
-                    await Database.update_balance(user_id, win)
-                    await Database.update_stats(user_id, True)
-                    await Database.add_game_history(user_id, game, bet, win, 'win')
-                    balance = await Database.get_balance(user_id)
-                    result_msg = await message.answer(
-                        text=f"🎰 {slot1} {slot2} {slot3} 💎 ДЖЕКПОТ!\n"
-                        f"💰 +{win:.1f} монет! (x{20 * boost:.1f})\n\n"
-                        f"💳 Баланс: {balance:.1f} монет",
-                        reply_markup=games_keyboard()
-                    )
-                elif slot1 == '7️⃣':
-                    win = bet * 15 * boost
-                    await Database.update_balance(user_id, win)
-                    await Database.update_stats(user_id, True)
-                    await Database.add_game_history(user_id, game, bet, win, 'win')
-                    balance = await Database.get_balance(user_id)
-                    result_msg = await message.answer(
-                        text=f"🎰 {slot1} {slot2} {slot3} 🎰 СЕМЁРКИ!\n"
-                        f"💰 +{win:.1f} монет! (x{15 * boost:.1f})\n\n"
-                        f"💳 Баланс: {balance:.1f} монет",
-                        reply_markup=games_keyboard()
-                    )
-                else:
-                    win = bet * 10 * boost
-                    await Database.update_balance(user_id, win)
-                    await Database.update_stats(user_id, True)
-                    await Database.add_game_history(user_id, game, bet, win, 'win')
-                    balance = await Database.get_balance(user_id)
-                    result_msg = await message.answer(
-                        text=f"🎰 {slot1} {slot2} {slot3} 🎰 ТРИ В РЯД!\n"
-                        f"💰 +{win:.1f} монет! (x{10 * boost:.1f})\n\n"
-                        f"💳 Баланс: {balance:.1f} монет",
-                        reply_markup=games_keyboard()
-                    )
-            elif slot1 == slot2 or slot2 == slot3:
-                await Database.add_game_history(user_id, game, bet, bet, 'draw')
-                balance = await Database.get_balance(user_id)
-                result_msg = await message.answer(
-                    text=f"🎰 {slot1} {slot2} {slot3} 🔄 ДВА В РЯД!\n"
-                    f"💳 Баланс: {balance:.1f} монет",
-                    reply_markup=games_keyboard()
-                )
-            else:
-                win = -bet  # ОТРИЦАТЕЛЬНОЕ ЗНАЧЕНИЕ!
-                await Database.update_balance(user_id, win)  # СПИСЫВАЕМ!
-                await Database.update_stats(user_id, False)
-                await Database.add_game_history(user_id, game, bet, win, 'loss')
-                balance = await Database.get_balance(user_id)
-                result_msg = await message.answer(
-                    text=f"🎰 {slot1} {slot2} {slot3} ❌ Ничего не совпало!\n"
-                    f"💸 -{bet} монет!\n\n"
-                    f"💳 Баланс: {balance:.1f} монет",
-                    reply_markup=games_keyboard()
-                )
-            await save_message(user_id, result_msg)
-    
-    @dp.callback_query(F.data.startswith("game_"))
-    async def game_handler(callback: types.CallbackQuery, state: FSMContext):
-        user_id = callback.from_user.id
-        if user_id not in user_sessions:
-            await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
-            return
-        
-        game = callback.data.replace('game_', '')
-        balance = await Database.get_balance(user_id)
-        
-        if balance < MIN_BET:
-            await callback.answer(f"❌ Недостаточно монет! Минимальная ставка: {MIN_BET}")
-            return
-        
-        await callback.message.edit_text(
-            text=f"🎮 {game.upper()}\n💰 Баланс: {balance:.1f} монет\n\nВыбери ставку:",
-            reply_markup=bet_keyboard(game)
-        )
-        await callback.answer()
-    
-    @dp.callback_query(F.data.startswith("bet_"))
-    async def play_game(callback: types.CallbackQuery, state: FSMContext):
-        user_id = callback.from_user.id
-        if user_id not in user_sessions:
-            await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
-            return
-        
-        data = callback.data.split('_')
-        game = data[1]
-        bet = int(data[2])
-        
-        balance = await Database.get_balance(user_id)
-        if balance < bet:
-            await callback.answer("❌ Недостаточно монет!")
-            return
-        
-        await state.clear()
-        
-        # Удаляем сообщение со ставкой
-        await callback.message.delete()
-        
-        await process_game(callback.message, game, bet, callback.bot)
-        await callback.answer()
-    
-    @dp.callback_query(F.data.startswith("custom_bet_"))
-    async def custom_bet(callback: types.CallbackQuery, state: FSMContext):
-        user_id = callback.from_user.id
-        if user_id not in user_sessions:
-            await callback.answer("❌ Это окно не для вас! Напишите /start", show_alert=True)
-            return
-        
-        game = callback.data.replace('custom_bet_', '')
-        
-        await state.set_state(GameStates.waiting_for_bet)
-        await state.update_data(game=game)
-        
-        await callback.message.edit_text(
-            text=f"✏️ Отправь сообщением сумму ставки от {MIN_BET} до {MAX_BET}:\n\n"
-            f"Игра: {game.upper()}\n"
-            f"💰 Баланс: {await Database.get_balance(user_id)} монет",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="games")]],
-                row_width=1
-            )
-        )
-        await callback.answer()
+                slot
