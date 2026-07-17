@@ -1,6 +1,6 @@
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import datetime
@@ -79,6 +79,8 @@ async def delete_message_later(msg, delay: int):
 
 def register_handlers(dp: Dispatcher):
     
+    # ========== КОМАНДЫ ==========
+    
     @dp.message(Command("start", "help"))
     async def cmd_start(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
@@ -114,6 +116,9 @@ def register_handlers(dp: Dispatcher):
 """
         
         await message.answer(welcome_text, reply_markup=main_keyboard())
+        logging.info(f"📩 /start от {user_id}")
+    
+    # ========== CALLBACK QUERY ==========
     
     @dp.callback_query(F.data == "main_menu")
     async def main_menu(callback: types.CallbackQuery, state: FSMContext):
@@ -408,6 +413,8 @@ def register_handlers(dp: Dispatcher):
         )
         await callback.answer()
     
+    # ========== ОБРАБОТКА ТЕКСТА ==========
+    
     @dp.message(GameStates.waiting_for_hours)
     async def process_hours_input(message: types.Message, state: FSMContext):
         user_id = message.from_user.id
@@ -417,7 +424,6 @@ def register_handlers(dp: Dispatcher):
             if 1 <= hours <= 24:
                 await state.update_data(hours=hours)
                 
-                # Проверяем, есть ли выбранный бонус
                 data = await state.get_data()
                 if 'item' in data:
                     item_name = data['item']
@@ -472,6 +478,8 @@ def register_handlers(dp: Dispatcher):
         except:
             await message.answer("❌ Введи число!")
     
+    # ========== ИГРЫ ==========
+    
     async def process_game(message: types.Message, game: str, bet: int):
         user_id = message.from_user.id
         balance = await Database.get_balance(user_id)
@@ -483,28 +491,18 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         
         if game == 'dice':
-            # ========== ИГРА В КОСТИ с aiogram 3 ==========
-            
+            # ========== КОСТИ ==========
             start_msg = await message.answer("🎲 НАЧИНАЕМ ИГРУ В КОСТИ!")
             
-            # БОТ КИДАЕТ КУБИК - ВСТРОЕННЫЙ МЕТОД!
-            await asyncio.sleep(0.5)
             bot_dice = await bot.send_dice(chat_id=message.chat.id, emoji="🎲")
-            
-            # Ждём анимацию
             await asyncio.sleep(2.5)
-            
-            # ПАРСИМ РЕЗУЛЬТАТ (aiogram 3 возвращает объект с value)
             bot_roll = bot_dice.dice.value
             
-            # ИГРОК КИДАЕТ КУБИК
             await asyncio.sleep(0.5)
             player_dice = await bot.send_dice(chat_id=message.chat.id, emoji="🎲")
-            
             await asyncio.sleep(2.5)
             player_roll = player_dice.dice.value
             
-            # РЕЗУЛЬТАТ
             await asyncio.sleep(0.5)
             result_text = (
                 f"🤖 Бросок бота: {bot_roll}\n"
@@ -544,7 +542,6 @@ def register_handlers(dp: Dispatcher):
                     reply_markup=games_keyboard()
                 )
             
-            # Удаляем старые сообщения
             await asyncio.sleep(5)
             await delete_message_later(start_msg, 0)
             await delete_message_later(bot_dice, 0)
@@ -552,22 +549,13 @@ def register_handlers(dp: Dispatcher):
             await delete_message_later(result_msg, 15)
         
         elif game == 'slot':
-            # ========== ИГРОВОЙ АВТОМАТ с aiogram 3 ==========
-            
+            # ========== СЛОТЫ ==========
             start_msg = await message.answer("🎰 КРУТИМ БАРАБАНЫ...")
             
-            # ОТПРАВЛЯЕМ СЛОТ - ВСТРОЕННЫЙ МЕТОД!
-            await asyncio.sleep(0.5)
             slot_msg = await bot.send_dice(chat_id=message.chat.id, emoji="🎰")
-            
-            # Ждём анимацию
             await asyncio.sleep(3.0)
-            
-            # ПАРСИМ РЕЗУЛЬТАТ (aiogram 3 возвращает объект с value)
-            # Для слота value - это число от 1 до 6, которое соответствует комбинации
             slot_value = slot_msg.dice.value
             
-            # Преобразуем число в комбинацию символов
             slot_combinations = {
                 1: ['🍒', '🍒', '🍒'],
                 2: ['🍋', '🍋', '🍋'],
@@ -577,7 +565,6 @@ def register_handlers(dp: Dispatcher):
                 6: ['💎', '💎', '💎'],
             }
             
-            # Если значение нестандартное - генерируем случайно
             if slot_value in slot_combinations:
                 slot1, slot2, slot3 = slot_combinations[slot_value]
             else:
@@ -588,7 +575,6 @@ def register_handlers(dp: Dispatcher):
             
             await asyncio.sleep(0.5)
             
-            # РЕЗУЛЬТАТ
             if slot1 == slot2 == slot3:
                 if slot1 == '💎':
                     win = bet * 20 * boost
