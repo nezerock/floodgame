@@ -20,53 +20,81 @@ class GameStates(StatesGroup):
     waiting_for_shop_confirm = State()
 
 def main_keyboard():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton(text=f"{EMOJI['coin']} Баланс", callback_data="balance"),
-        InlineKeyboardButton(text=f"{EMOJI['diamond']} Бонус", callback_data="daily"),
-        InlineKeyboardButton(text=f"{EMOJI['games']} Игры", callback_data="games"),
-        InlineKeyboardButton(text=f"{EMOJI['leaderboard']} Лидеры", callback_data="leaderboard"),
-        InlineKeyboardButton(text=f"{EMOJI['click']} Кликер", callback_data="clicker"),
-        InlineKeyboardButton(text=f"{EMOJI['shop']} Магазин", callback_data="shop")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"{EMOJI['coin']} Баланс", callback_data="balance"),
+                InlineKeyboardButton(text=f"{EMOJI['diamond']} Бонус", callback_data="daily")
+            ],
+            [
+                InlineKeyboardButton(text=f"{EMOJI['games']} Игры", callback_data="games"),
+                InlineKeyboardButton(text=f"{EMOJI['leaderboard']} Лидеры", callback_data="leaderboard")
+            ],
+            [
+                InlineKeyboardButton(text=f"{EMOJI['click']} Кликер", callback_data="clicker"),
+                InlineKeyboardButton(text=f"{EMOJI['shop']} Магазин", callback_data="shop")
+            ]
+        ],
+        row_width=2
     )
     return keyboard
 
 def games_keyboard():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton(text="🎲 Кости (1.7x)", callback_data="game_dice"),
-        InlineKeyboardButton(text="🎰 Слоты (20x)", callback_data="game_slot"),
-        InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🎲 Кости (1.7x)", callback_data="game_dice"),
+                InlineKeyboardButton(text="🎰 Слоты (20x)", callback_data="game_slot")
+            ],
+            [
+                InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")
+            ]
+        ],
+        row_width=2
     )
     return keyboard
 
 def bet_keyboard(game: str):
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton(text="1💰", callback_data=f"bet_{game}_1"),
-        InlineKeyboardButton(text="5💰", callback_data=f"bet_{game}_5"),
-        InlineKeyboardButton(text="10💰", callback_data=f"bet_{game}_10"),
-        InlineKeyboardButton(text="25💰", callback_data=f"bet_{game}_25"),
-        InlineKeyboardButton(text="50💰", callback_data=f"bet_{game}_50"),
-        InlineKeyboardButton(text="100💰", callback_data=f"bet_{game}_100"),
-        InlineKeyboardButton(text="250💰", callback_data=f"bet_{game}_250"),
-        InlineKeyboardButton(text="500💰", callback_data=f"bet_{game}_500"),
-        InlineKeyboardButton(text="1000💰", callback_data=f"bet_{game}_1000"),
-        InlineKeyboardButton(text="✏️ Ввести ставку", callback_data=f"custom_bet_{game}"),
-        InlineKeyboardButton(text="🔙 Назад", callback_data="games")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="1💰", callback_data=f"bet_{game}_1"),
+                InlineKeyboardButton(text="5💰", callback_data=f"bet_{game}_5"),
+                InlineKeyboardButton(text="10💰", callback_data=f"bet_{game}_10")
+            ],
+            [
+                InlineKeyboardButton(text="25💰", callback_data=f"bet_{game}_25"),
+                InlineKeyboardButton(text="50💰", callback_data=f"bet_{game}_50"),
+                InlineKeyboardButton(text="100💰", callback_data=f"bet_{game}_100")
+            ],
+            [
+                InlineKeyboardButton(text="250💰", callback_data=f"bet_{game}_250"),
+                InlineKeyboardButton(text="500💰", callback_data=f"bet_{game}_500"),
+                InlineKeyboardButton(text="1000💰", callback_data=f"bet_{game}_1000")
+            ],
+            [
+                InlineKeyboardButton(text="✏️ Ввести ставку", callback_data=f"custom_bet_{game}"),
+                InlineKeyboardButton(text="🔙 Назад", callback_data="games")
+            ]
+        ],
+        row_width=3
     )
     return keyboard
 
 def shop_keyboard():
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    for name, item in SHOP_ITEMS.items():
-        keyboard.add(InlineKeyboardButton(
-            text=f"{name}x ({item['price']}💰)", 
-            callback_data=f"shop_{name}"
-        ))
-    keyboard.add(
-        InlineKeyboardButton(text="⏱ Ввести часы", callback_data="shop_time"),
-        InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"1.3x (25💰)", callback_data="shop_1.3x"),
+                InlineKeyboardButton(text=f"1.5x (40💰)", callback_data="shop_1.5x"),
+                InlineKeyboardButton(text=f"2.0x (70💰)", callback_data="shop_2.0x")
+            ],
+            [
+                InlineKeyboardButton(text="⏱ Ввести часы", callback_data="shop_time"),
+                InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")
+            ]
+        ],
+        row_width=3
     )
     return keyboard
 
@@ -78,8 +106,6 @@ async def delete_message_later(msg, delay: int):
         pass
 
 def register_handlers(dp: Dispatcher):
-    
-    # ========== КОМАНДЫ ==========
     
     @dp.message(Command("start", "help"))
     async def cmd_start(message: types.Message, state: FSMContext):
@@ -117,8 +143,6 @@ def register_handlers(dp: Dispatcher):
         
         await message.answer(welcome_text, reply_markup=main_keyboard())
         logging.info(f"📩 /start от {user_id}")
-    
-    # ========== CALLBACK QUERY ==========
     
     @dp.callback_query(F.data == "main_menu")
     async def main_menu(callback: types.CallbackQuery, state: FSMContext):
@@ -226,10 +250,12 @@ def register_handlers(dp: Dispatcher):
         clicks_today = await Database.get_clicks_today(user_id)
         remaining = MAX_CLICKS_PER_DAY - clicks_today
         
-        keyboard = InlineKeyboardMarkup(row_width=1)
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[]
+        )
         if remaining > 0:
-            keyboard.add(InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click"))
-        keyboard.add(InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu"))
+            keyboard.inline_keyboard.append([InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click")])
+        keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
         
         status = "🟢 Доступно" if remaining > 0 else "🔴 Лимит исчерпан"
         await callback.message.edit_text(
@@ -270,10 +296,12 @@ def register_handlers(dp: Dispatcher):
         
         await callback.answer(f"👆 +{CLICK_REWARD} монет! Баланс: {balance:.1f}", show_alert=False)
         
-        keyboard = InlineKeyboardMarkup(row_width=1)
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[]
+        )
         if remaining > 0:
-            keyboard.add(InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click"))
-        keyboard.add(InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu"))
+            keyboard.inline_keyboard.append([InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click")])
+        keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
         
         await callback.message.edit_text(
             text=f"👆 КЛИКЕР\n\n"
@@ -324,8 +352,9 @@ def register_handlers(dp: Dispatcher):
                 text="⏱ Отправь сообщением количество часов (1-24):\n\n"
                 "💡 Стоимость: цена бонуса × количество часов\n"
                 "Пример: для бонуса x1.3 (25💰) на 3 часа = 75💰",
-                reply_markup=InlineKeyboardMarkup().add(
-                    InlineKeyboardButton(text="🔙 Назад", callback_data="shop")
+                reply_markup=InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="shop")]],
+                    row_width=1
                 )
             )
             await callback.answer()
@@ -350,10 +379,13 @@ def register_handlers(dp: Dispatcher):
             f"💰 Цена: {item['price']} монет за 1 час\n"
             f"⏱ Длительность: 1 час\n\n"
             f"Нажми 'Купить' для подтверждения или измени время:",
-            reply_markup=InlineKeyboardMarkup(row_width=2).add(
-                InlineKeyboardButton(text="✅ Купить", callback_data=f"shop_confirm_{item_name}_1"),
-                InlineKeyboardButton(text="⏱ Изменить время", callback_data="shop_time"),
-                InlineKeyboardButton(text="🔙 Назад", callback_data="shop")
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Купить", callback_data=f"shop_confirm_{item_name}_1")],
+                    [InlineKeyboardButton(text="⏱ Изменить время", callback_data="shop_time")],
+                    [InlineKeyboardButton(text="🔙 Назад", callback_data="shop")]
+                ],
+                row_width=1
             )
         )
         await callback.answer()
@@ -407,13 +439,12 @@ def register_handlers(dp: Dispatcher):
             text="⏱ Отправь сообщением количество часов (1-24):\n\n"
             "💡 Стоимость: цена бонуса × количество часов\n"
             "Пример: для бонуса x1.3 (25💰) на 3 часа = 75💰",
-            reply_markup=InlineKeyboardMarkup().add(
-                InlineKeyboardButton(text="🔙 Назад", callback_data="shop")
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="shop")]],
+                row_width=1
             )
         )
         await callback.answer()
-    
-    # ========== ОБРАБОТКА ТЕКСТА ==========
     
     @dp.message(GameStates.waiting_for_hours)
     async def process_hours_input(message: types.Message, state: FSMContext):
@@ -438,9 +469,12 @@ def register_handlers(dp: Dispatcher):
                         text=f"✅ Выбрано {hours} час(ов) для бонуса x{item['multiplier']}\n"
                         f"💰 Цена: {total_price} монет\n\n"
                         f"Нажми 'Купить' для подтверждения:",
-                        reply_markup=InlineKeyboardMarkup().add(
-                            InlineKeyboardButton(text="✅ Купить", callback_data=f"shop_confirm_{item_name}_{hours}"),
-                            InlineKeyboardButton(text="🔙 Назад", callback_data="shop")
+                        reply_markup=InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(text="✅ Купить", callback_data=f"shop_confirm_{item_name}_{hours}")],
+                                [InlineKeyboardButton(text="🔙 Назад", callback_data="shop")]
+                            ],
+                            row_width=1
                         )
                     )
                 else:
@@ -478,8 +512,6 @@ def register_handlers(dp: Dispatcher):
         except:
             await message.answer("❌ Введи число!")
     
-    # ========== ИГРЫ ==========
-    
     async def process_game(message: types.Message, game: str, bet: int):
         user_id = message.from_user.id
         balance = await Database.get_balance(user_id)
@@ -491,7 +523,6 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         
         if game == 'dice':
-            # ========== КОСТИ ==========
             start_msg = await message.answer("🎲 НАЧИНАЕМ ИГРУ В КОСТИ!")
             
             bot_dice = await bot.send_dice(chat_id=message.chat.id, emoji="🎲")
@@ -549,7 +580,6 @@ def register_handlers(dp: Dispatcher):
             await delete_message_later(result_msg, 15)
         
         elif game == 'slot':
-            # ========== СЛОТЫ ==========
             start_msg = await message.answer("🎰 КРУТИМ БАРАБАНЫ...")
             
             slot_msg = await bot.send_dice(chat_id=message.chat.id, emoji="🎰")
@@ -695,8 +725,9 @@ def register_handlers(dp: Dispatcher):
             text=f"✏️ Отправь сообщением сумму ставки от {MIN_BET} до {MAX_BET}:\n\n"
             f"Игра: {game.upper()}\n"
             f"💰 Баланс: {await Database.get_balance(user_id)} монет",
-            reply_markup=InlineKeyboardMarkup().add(
-                InlineKeyboardButton(text="🔙 Назад", callback_data="games")
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="games")]],
+                row_width=1
             )
         )
         await callback.answer()
