@@ -1,7 +1,7 @@
 import logging
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
+from aiogram.client.default import DefaultBotProperties
 
 from config import BOT_TOKEN
 from database import init_db
@@ -16,9 +16,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-bot = Bot(token=BOT_TOKEN, parse_mode=types.ParseMode.HTML)
-dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+dp = Dispatcher()
 
 register_handlers(dp)
 
@@ -31,7 +30,7 @@ async def main():
     await on_startup()
     
     try:
-        await dp.start_polling()
+        await dp.start_polling(bot)
     except KeyboardInterrupt:
         logging.info("⏹ Бот остановлен")
     finally:
