@@ -30,9 +30,18 @@ async def main():
     await on_startup()
     
     try:
+        # Проверяем, нет ли вебхука
+        webhook_info = await bot.get_webhook_info()
+        if webhook_info.url:
+            logging.info(f"🔄 Удаляем вебхук: {webhook_info.url}")
+            await bot.delete_webhook()
+        
+        logging.info("🔄 Запускаем polling...")
         await dp.start_polling(bot)
     except KeyboardInterrupt:
         logging.info("⏹ Бот остановлен")
+    except Exception as e:
+        logging.error(f"❌ Ошибка: {e}")
     finally:
         await bot.close()
 
