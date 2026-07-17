@@ -139,6 +139,8 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Напишите /start", show_alert=True)
             return
         await state.clear()
+        
+        # Удаляем ВСЕ сообщения
         await clear_user_messages(user_id)
         
         balance = await Database.get_balance(user_id)
@@ -160,10 +162,11 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         boost_text = f"\n🔥 Активный бонус: x{boost}" if boost > 1.0 else ""
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"💰 Баланс: {balance} монет{boost_text}",
             reply_markup=main_keyboard()
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data == "daily")
@@ -176,15 +179,16 @@ def register_handlers(dp: Dispatcher):
         if await Database.can_claim_daily(user_id):
             await Database.claim_daily(user_id)
             balance = await Database.get_balance(user_id)
-            await callback.message.edit_text(
+            msg = await callback.message.edit_text(
                 text=f"🎉 Бонус {DAILY_BONUS} монет получен!\n\n💰 Баланс: {balance} монет",
                 reply_markup=main_keyboard()
             )
         else:
-            await callback.message.edit_text(
+            msg = await callback.message.edit_text(
                 text="⏳ Бонус уже получен сегодня!\nПриходи завтра.",
                 reply_markup=main_keyboard()
             )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data == "games")
@@ -194,10 +198,11 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Напишите /start", show_alert=True)
             return
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text="🎮 Выбери игру:",
             reply_markup=games_keyboard()
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data == "leaderboard")
@@ -209,10 +214,11 @@ def register_handlers(dp: Dispatcher):
         
         leaders = await Database.get_leaderboard(10)
         if not leaders:
-            await callback.message.edit_text(
+            msg = await callback.message.edit_text(
                 text="📊 Таблица лидеров пуста!",
                 reply_markup=main_keyboard()
             )
+            await save_message(user_id, msg)
             await callback.answer()
             return
         
@@ -224,7 +230,8 @@ def register_handlers(dp: Dispatcher):
             medal = medals[i] if i < 3 else f"{i+1}."
             text += f"{medal} {name} - 💰{balance:.1f} (Побед: {wins})\n"
         
-        await callback.message.edit_text(text=text, reply_markup=main_keyboard())
+        msg = await callback.message.edit_text(text=text, reply_markup=main_keyboard())
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data == "clicker")
@@ -242,10 +249,11 @@ def register_handlers(dp: Dispatcher):
             keyboard.inline_keyboard.append([InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click")])
         keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"👆 КЛИКЕР\n\n💰 За клик: +{CLICK_REWARD} монет\n⏱ Кулдаун: {CLICK_COOLDOWN} сек\n📊 Сегодня: {clicks_today}/{MAX_CLICKS_PER_DAY}\n📈 Осталось: {remaining}",
             reply_markup=keyboard
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data == "do_click")
@@ -280,10 +288,11 @@ def register_handlers(dp: Dispatcher):
             keyboard.inline_keyboard.append([InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click")])
         keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"👆 КЛИКЕР\n\n✅ Клик засчитан!\n💰 Баланс: {balance:.1f}\n📊 Осталось: {remaining}",
             reply_markup=keyboard
         )
+        await save_message(user_id, msg)
     
     @dp.callback_query(F.data == "shop")
     async def shop_menu(callback: types.CallbackQuery):
@@ -301,10 +310,11 @@ def register_handlers(dp: Dispatcher):
             remaining = expiry_time - datetime.now()
             boost_text += f"\n⏱ Осталось: {remaining.seconds // 3600}ч {remaining.seconds % 3600 // 60}м"
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"🏪 МАГАЗИН\n\n💰 Баланс: {balance} монет{boost_text}\n\nВыбери бонус:",
             reply_markup=shop_keyboard()
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data.startswith("shop_"))
@@ -318,12 +328,13 @@ def register_handlers(dp: Dispatcher):
         
         if item_name == 'time':
             await state.set_state(GameStates.waiting_for_hours)
-            await callback.message.edit_text(
+            msg = await callback.message.edit_text(
                 text="⏱ Отправь число часов (1-24):",
                 reply_markup=InlineKeyboardMarkup(
                     inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="shop")]]
                 )
             )
+            await save_message(user_id, msg)
             await callback.answer()
             return
         
@@ -341,7 +352,7 @@ def register_handlers(dp: Dispatcher):
             await callback.answer(f"❌ Нужно: {item['price']} монет", show_alert=True)
             return
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"✅ Бонус x{item['multiplier']}\n💰 {item['price']} монет за 1 час\n\nПодтверди:",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
@@ -351,6 +362,7 @@ def register_handlers(dp: Dispatcher):
                 ]
             )
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data.startswith("shop_confirm_"))
@@ -382,10 +394,11 @@ def register_handlers(dp: Dispatcher):
         await Database.set_boost(user_id, item['multiplier'], hours)
         balance = await Database.get_balance(user_id)
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"✅ Куплен бонус x{item['multiplier']} на {hours} час(ов)!\n💰 Баланс: {balance} монет",
             reply_markup=shop_keyboard()
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data == "shop_time")
@@ -396,12 +409,13 @@ def register_handlers(dp: Dispatcher):
             return
         
         await state.set_state(GameStates.waiting_for_hours)
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text="⏱ Отправь число часов (1-24):",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="shop")]]
             )
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.message(GameStates.waiting_for_hours)
@@ -418,7 +432,7 @@ def register_handlers(dp: Dispatcher):
                     total_price = item['price'] * hours
                     await message.delete()
                     await state.set_state(GameStates.waiting_for_shop_confirm)
-                    await message.answer(
+                    msg = await message.answer(
                         text=f"✅ {hours} час(ов) для x{item['multiplier']}\n💰 Цена: {total_price} монет\n\nПодтверди:",
                         reply_markup=InlineKeyboardMarkup(
                             inline_keyboard=[
@@ -427,13 +441,17 @@ def register_handlers(dp: Dispatcher):
                             ]
                         )
                     )
+                    await save_message(user_id, msg)
                 else:
-                    await message.answer("⚠️ Сначала выбери бонус!", reply_markup=shop_keyboard())
+                    msg = await message.answer("⚠️ Сначала выбери бонус!", reply_markup=shop_keyboard())
+                    await save_message(user_id, msg)
                 return
             else:
-                await message.answer("❌ Введи число от 1 до 24!")
+                msg = await message.answer("❌ Введи число от 1 до 24!")
+                await save_message(user_id, msg)
         except:
-            await message.answer("❌ Введи число!")
+            msg = await message.answer("❌ Введи число!")
+            await save_message(user_id, msg)
     
     @dp.message(GameStates.waiting_for_bet)
     async def process_bet_input(message: types.Message, state: FSMContext):
@@ -452,16 +470,19 @@ def register_handlers(dp: Dispatcher):
                 await process_game(message, game, bet, message.bot)
                 return
             else:
-                await message.answer(f"❌ Ставка от {MIN_BET} до {MAX_BET}!")
+                msg = await message.answer(f"❌ Ставка от {MIN_BET} до {MAX_BET}!")
+                await save_message(user_id, msg)
         except:
-            await message.answer("❌ Введи число!")
+            msg = await message.answer("❌ Введи число!")
+            await save_message(user_id, msg)
     
     async def process_game(message: types.Message, game: str, bet: int, bot: Bot):
         user_id = message.from_user.id
         balance = await Database.get_balance(user_id)
         
         if balance < bet:
-            await message.answer("❌ Недостаточно монет!")
+            msg = await message.answer("❌ Недостаточно монет!")
+            await save_message(user_id, msg)
             return
         
         boost, _ = await Database.get_boost(user_id)
@@ -523,6 +544,7 @@ def register_handlers(dp: Dispatcher):
             await asyncio.sleep(3.0)
             slot_value = slot_msg.dice.value
             
+            # ТОЛЬКО 4 ЭМОДЗИ: 🍋 🍇 📼 7️⃣
             slot_combinations = {
                 1: ['🍋', '🍋', '🍋'],
                 2: ['🍇', '🍇', '🍇'],
@@ -602,10 +624,11 @@ def register_handlers(dp: Dispatcher):
             await callback.answer(f"❌ Минимальная ставка: {MIN_BET}", show_alert=True)
             return
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"🎮 {game.upper()}\n💰 Баланс: {balance:.1f} монет\n\nВыбери ставку:",
             reply_markup=bet_keyboard(game)
         )
+        await save_message(user_id, msg)
         await callback.answer()
     
     @dp.callback_query(F.data.startswith("bet_"))
@@ -640,10 +663,11 @@ def register_handlers(dp: Dispatcher):
         await state.set_state(GameStates.waiting_for_bet)
         await state.update_data(game=game)
         
-        await callback.message.edit_text(
+        msg = await callback.message.edit_text(
             text=f"✏️ Введи ставку от {MIN_BET} до {MAX_BET}:",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="games")]]
             )
         )
+        await save_message(user_id, msg)
         await callback.answer()
