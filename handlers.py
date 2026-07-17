@@ -1,9 +1,10 @@
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from datetime import datetime
+import logging
 
 from database import Database
 from config import EMOJI, DAILY_BONUS, MIN_BET, MAX_BET, CLICK_COOLDOWN, MAX_CLICKS_PER_DAY, CLICK_REWARD, SHOP_ITEMS
@@ -85,9 +86,9 @@ def shop_keyboard():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text=f"1.3x (25💰)", callback_data="shop_1.3x"),
-                InlineKeyboardButton(text=f"1.5x (40💰)", callback_data="shop_1.5x"),
-                InlineKeyboardButton(text=f"2.0x (70💰)", callback_data="shop_2.0x")
+                InlineKeyboardButton(text="1.3x (25💰)", callback_data="shop_1.3x"),
+                InlineKeyboardButton(text="1.5x (40💰)", callback_data="shop_1.5x"),
+                InlineKeyboardButton(text="2.0x (70💰)", callback_data="shop_2.0x")
             ],
             [
                 InlineKeyboardButton(text="⏱ Ввести часы", callback_data="shop_time"),
@@ -250,9 +251,7 @@ def register_handlers(dp: Dispatcher):
         clicks_today = await Database.get_clicks_today(user_id)
         remaining = MAX_CLICKS_PER_DAY - clicks_today
         
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[]
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
         if remaining > 0:
             keyboard.inline_keyboard.append([InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click")])
         keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
@@ -296,9 +295,7 @@ def register_handlers(dp: Dispatcher):
         
         await callback.answer(f"👆 +{CLICK_REWARD} монет! Баланс: {balance:.1f}", show_alert=False)
         
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[]
-        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[])
         if remaining > 0:
             keyboard.inline_keyboard.append([InlineKeyboardButton(text=f"👆 Кликнуть (+{CLICK_REWARD} монет)", callback_data="do_click")])
         keyboard.inline_keyboard.append([InlineKeyboardButton(text="🔙 Назад", callback_data="main_menu")])
@@ -505,14 +502,14 @@ def register_handlers(dp: Dispatcher):
                 
                 await state.clear()
                 await message.delete()
-                await process_game(message, game, bet)
+                await process_game(message, game, bet, message.bot)  # ← передаём bot!
                 return
             else:
                 await message.answer(f"❌ Ставка должна быть от {MIN_BET} до {MAX_BET}!")
         except:
             await message.answer("❌ Введи число!")
     
-    async def process_game(message: types.Message, game: str, bet: int):
+    async def process_game(message: types.Message, game: str, bet: int, bot: Bot):
         user_id = message.from_user.id
         balance = await Database.get_balance(user_id)
         
@@ -523,17 +520,25 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         
         if game == 'dice':
+            # ========== КОСТИ ==========
             start_msg = await message.answer("🎲 НАЧИНАЕМ ИГРУ В КОСТИ!")
             
+            # Бот кидает кубик
+            await asyncio.sleep(0.5)
             bot_dice = await bot.send_dice(chat_id=message.chat.id, emoji="🎲")
+            
+            # Ждём анимацию
             await asyncio.sleep(2.5)
             bot_roll = bot_dice.dice.value
             
+            # Игрок кидает кубик
             await asyncio.sleep(0.5)
             player_dice = await bot.send_dice(chat_id=message.chat.id, emoji="🎲")
+            
             await asyncio.sleep(2.5)
             player_roll = player_dice.dice.value
             
+            # Результат
             await asyncio.sleep(0.5)
             result_text = (
                 f"🤖 Бросок бота: {bot_roll}\n"
@@ -573,6 +578,7 @@ def register_handlers(dp: Dispatcher):
                     reply_markup=games_keyboard()
                 )
             
+            # Удаляем старые сообщения
             await asyncio.sleep(5)
             await delete_message_later(start_msg, 0)
             await delete_message_later(bot_dice, 0)
@@ -580,12 +586,18 @@ def register_handlers(dp: Dispatcher):
             await delete_message_later(result_msg, 15)
         
         elif game == 'slot':
+            # ========== СЛОТЫ ==========
             start_msg = await message.answer("🎰 КРУТИМ БАРАБАНЫ...")
             
+            # Отправляем слот
+            await asyncio.sleep(0.5)
             slot_msg = await bot.send_dice(chat_id=message.chat.id, emoji="🎰")
+            
+            # Ждём анимацию
             await asyncio.sleep(3.0)
             slot_value = slot_msg.dice.value
             
+            # Преобразуем значение в комбинацию
             slot_combinations = {
                 1: ['🍒', '🍒', '🍒'],
                 2: ['🍋', '🍋', '🍋'],
@@ -605,6 +617,7 @@ def register_handlers(dp: Dispatcher):
             
             await asyncio.sleep(0.5)
             
+            # Результат
             if slot1 == slot2 == slot3:
                 if slot1 == '💎':
                     win = bet * 20 * boost
@@ -706,7 +719,7 @@ def register_handlers(dp: Dispatcher):
         
         await state.clear()
         await callback.message.delete()
-        await process_game(callback.message, game, bet)
+        await process_game(callback.message, game, bet, callback.bot)  # ← передаём bot!
         await callback.answer()
     
     @dp.callback_query(F.data.startswith("custom_bet_"))
