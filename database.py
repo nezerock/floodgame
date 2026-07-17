@@ -30,7 +30,7 @@ async def init_db():
                 user_id INTEGER,
                 game_type TEXT,
                 bet INTEGER,
-                win INTEGER,
+                win REAL,
                 result TEXT,
                 created_at TEXT
             )
@@ -59,6 +59,7 @@ class Database:
     
     @staticmethod
     async def update_balance(user_id: int, amount: float):
+        """Обновить баланс пользователя (может быть отрицательным)"""
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute('''
                 UPDATE users 
