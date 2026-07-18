@@ -1,11 +1,10 @@
-from aiogram import types
-from aiogram.dispatcher import Dispatcher
+from aiogram import Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.dispatcher.filters import Text
 import random
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import aiosqlite
 
 from database import Database
