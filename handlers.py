@@ -197,6 +197,9 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Напишите /start", show_alert=True)
             return
         
+        # ← ДОБАВЛЯЕМ УДАЛЕНИЕ!
+        await clear_user_messages(user_id)
+        
         msg = await callback.message.edit_text(
             text="🎮 Выбери игру:",
             reply_markup=games_keyboard()
@@ -478,7 +481,7 @@ def register_handlers(dp: Dispatcher):
     async def process_game(message: types.Message, game: str, bet: int, bot: Bot):
         user_id = message.from_user.id
         
-        # Получаем текущий баланс
+        # ПОЛУЧАЕМ ТЕКУЩИЙ БАЛАНС
         balance = await Database.get_balance(user_id)
         
         if balance < bet:
@@ -508,20 +511,20 @@ def register_handlers(dp: Dispatcher):
             
             if player_roll > bot_roll:
                 win = bet * 1.7 * boost
-                await Database.update_balance(user_id, win)  # ← ДОБАВЛЯЕМ!
+                await Database.update_balance(user_id, win)
                 await Database.update_stats(user_id, True)
                 await Database.add_game_history(user_id, game, bet, win, 'win')
-                balance = await Database.get_balance(user_id)  # ← ПОЛУЧАЕМ НОВЫЙ БАЛАНС!
+                balance = await Database.get_balance(user_id)
                 result_msg = await message.answer(
                     text=f"🏆 ТЫ ПОБЕДИЛ!\n{result_text}💰 +{win:.1f} монет! (x{1.7 * boost:.1f})\n\n💳 Баланс: {balance:.1f} монет",
                     reply_markup=games_keyboard()
                 )
             elif player_roll < bot_roll:
                 win = -bet
-                await Database.update_balance(user_id, win)  # ← ОТНИМАЕМ!
+                await Database.update_balance(user_id, win)
                 await Database.update_stats(user_id, False)
                 await Database.add_game_history(user_id, game, bet, win, 'loss')
-                balance = await Database.get_balance(user_id)  # ← ПОЛУЧАЕМ НОВЫЙ БАЛАНС!
+                balance = await Database.get_balance(user_id)
                 result_msg = await message.answer(
                     text=f"😢 БОТ ПОБЕДИЛ!\n{result_text}💸 -{bet} монет!\n\n💳 Баланс: {balance:.1f} монет",
                     reply_markup=games_keyboard()
@@ -544,7 +547,7 @@ def register_handlers(dp: Dispatcher):
             await save_message(user_id, slot_msg)
             await asyncio.sleep(3.0)
             
-            # РЕАЛЬНЫЙ РЕЗУЛЬТАТ ОТ TELEGRAM!
+            # РЕАЛЬНЫЙ РЕЗУЛЬТАТ ОТ TELEGRAM
             slot_value = slot_msg.dice.value
             
             # ТОЛЬКО 4 КОМБИНАЦИИ
@@ -555,7 +558,6 @@ def register_handlers(dp: Dispatcher):
                 4: ['7️⃣', '7️⃣', '7️⃣'],
             }
             
-            # БЕЗ РАНДОМА!
             slot1, slot2, slot3 = slot_combinations[slot_value]
             
             if slot1 == slot2 == slot3:
