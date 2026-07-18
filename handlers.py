@@ -682,3 +682,7 @@ def register_handlers(dp: Dispatcher):
             text=f"✏️ Введи ставку от {MIN_BET} до {MAX_BET}:",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="games")]]
+            )
+        )
+        await save_message(user_id, msg)
+        await callback.answer()
