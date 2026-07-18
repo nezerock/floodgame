@@ -478,18 +478,22 @@ def register_handlers(dp: Dispatcher):
         if user_id not in user_sessions:
             await callback.answer("❌ Напишите /start", show_alert=True)
             return
+        
         data = callback.data.split('_')
         game = data[1]
         bet = int(data[2])
+        
         balance = await Database.get_balance(user_id)
         if balance < bet:
             await callback.answer("❌ Недостаточно монет!", show_alert=True)
             return
+        
         await state.clear()
-        chat_id = callback.message.chat.id
-        await callback.message.delete()
-        msg = await callback.bot.send_message(chat_id=chat_id, text="🎮 Начинаем игру...")
+        
+        # НЕ УДАЛЯЕМ СООБЩЕНИЕ, А РЕДАКТИРУЕМ ЕГО!
+        msg = await callback.message.edit_text("🎮 Начинаем игру...")
         await save_message(user_id, msg)
+        
         await process_game(msg, game, bet, callback.bot)
         await callback.answer()
 
