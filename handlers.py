@@ -197,7 +197,6 @@ def register_handlers(dp: Dispatcher):
             await callback.answer("❌ Напишите /start", show_alert=True)
             return
         
-        # ← ДОБАВЛЯЕМ УДАЛЕНИЕ!
         await clear_user_messages(user_id)
         
         msg = await callback.message.edit_text(
@@ -469,7 +468,12 @@ def register_handlers(dp: Dispatcher):
                 game = data.get('game', 'dice')
                 await state.clear()
                 await message.delete()
-                await process_game(message, game, bet, message.bot)
+                
+                # ← СОЗДАЁМ НОВОЕ СООБЩЕНИЕ ДЛЯ ИГРЫ
+                msg = await message.answer("🎮 Начинаем игру...")
+                await save_message(user_id, msg)
+                
+                await process_game(msg, game, bet, message.bot)
                 return
             else:
                 msg = await message.answer(f"❌ Ставка от {MIN_BET} до {MAX_BET}!")
@@ -492,6 +496,7 @@ def register_handlers(dp: Dispatcher):
         boost, _ = await Database.get_boost(user_id)
         
         if game == 'dice':
+            # ========== КОСТИ ==========
             start_msg = await message.answer("🎲 НАЧИНАЕМ ИГРУ!")
             await save_message(user_id, start_msg)
             
@@ -539,6 +544,7 @@ def register_handlers(dp: Dispatcher):
             await save_message(user_id, result_msg)
         
         elif game == 'slot':
+            # ========== СЛОТЫ ==========
             start_msg = await message.answer("🎰 КРУТИМ БАРАБАНЫ...")
             await save_message(user_id, start_msg)
             
@@ -648,8 +654,17 @@ def register_handlers(dp: Dispatcher):
             return
         
         await state.clear()
+        
+        # ← СОХРАНЯЕМ CHAT_ID
+        chat_id = callback.message.chat.id
+        
         await callback.message.delete()
-        await process_game(callback.message, game, bet, callback.bot)
+        
+        # ← СОЗДАЁМ НОВОЕ СООБЩЕНИЕ
+        msg = await callback.bot.send_message(chat_id=chat_id, text="🎮 Начинаем игру...")
+        await save_message(user_id, msg)
+        
+        await process_game(msg, game, bet, callback.bot)
         await callback.answer()
     
     @dp.callback_query(F.data.startswith("custom_bet_"))
@@ -667,7 +682,3 @@ def register_handlers(dp: Dispatcher):
             text=f"✏️ Введи ставку от {MIN_BET} до {MAX_BET}:",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[[InlineKeyboardButton(text="🔙 Назад", callback_data="games")]]
-            )
-        )
-        await save_message(user_id, msg)
-        await callback.answer()
